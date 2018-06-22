@@ -18,12 +18,18 @@ constexpr double pi() { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 
+/************************
+ * distance()
+ ***********************/
 double distance(double x1, double y1, double x2, double y2)
 {
   return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
 
-// Finds the closest WPT
+/*************************
+ * ClosestWaypoint()
+ * Finds the closest WPT
+ ************************/
 int ClosestWaypoint(double x,
                     double y,
                     const vector<double> &maps_x,
@@ -45,8 +51,11 @@ int ClosestWaypoint(double x,
   }
   return closestWaypoint;
 }
-
-// Finds the next WPT (based on car orientation ONLY!!)
+/************************
+ * NextWaypoint()
+ * Finds the next WPT
+ * (based on car orientation ONLY!!)
+ ************************/
 int NextWaypoint(double x,
                  double y,
                  double theta,
@@ -60,17 +69,20 @@ int NextWaypoint(double x,
 
   double heading = atan2( (map_y-y),(map_x-x) );
 
-  double angle = abs(theta-heading);
+  double angle = abs(theta-heading); // bearing to WPT off bow
+  angle = min((2*pi()-angle), angle); // if > 180deg, then measure from the other direction
 
-  if(angle > pi()/4) { // if closest WPT is behind, then grab next WPT
+  if(angle > pi()/2) { // if bearing-off-bow is beyond 90deg, closest WPT is behind, then grab next WPT
     closestWaypoint++;
     closestWaypoint = closestWaypoint % maps_x.size(); // wrap to protect against OutOfBound index
   }
   return closestWaypoint;
 }
 
-
-// Transform from map x,y coordinates to Frenet s,d coordinates
+/***********************
+ * getFrenet()
+ * Transform from map x,y coordinates to Frenet s,d coordinates
+************************/
 vector<double> getFrenet(double x,
                          double y,
                          double theta,
@@ -78,7 +90,6 @@ vector<double> getFrenet(double x,
                          const vector<double> &maps_y)
 {
   int next_wp = NextWaypoint(x,y, theta, maps_x,maps_y);
-
   int prev_wp = next_wp-1;
 
   // detect for wrapping around the WPTS (since it's a loop)
@@ -86,42 +97,66 @@ vector<double> getFrenet(double x,
     prev_wp  = maps_x.size()-1;
   }
 
-  double n_x = maps_x[next_wp] - maps_x[prev_wp];
+  double n_x = maps_x[next_wp] - maps_x[prev_wp]; // vector 'n' from prev_wp to next_wp
   double n_y = maps_y[next_wp] - maps_y[prev_wp];
-  double x_x = x - maps_x[prev_wp];
+
+  double x_x = x - maps_x[prev_wp];  // vector 'X' from prev_wp to vehicle location
   double x_y = y - maps_y[prev_wp];
 
+//-------------------------------------------------------------------------------
+//-- this is SOooo kludgy! Where did the magic point (1000,2000) came from?
+//--
+
+  if (0) // skip this whole segment since it's terrible algorithm
+  {
   // find the projection of x onto n
   double proj_norm = (x_x*n_x + x_y*n_y) / (n_x*n_x + n_y*n_y); // normalized dot-product
   double proj_x = proj_norm*n_x;
   double proj_y = proj_norm*n_y;
 
-  double frenet_d = distance(x_x,x_y,proj_x,proj_y);
+  double frenet_d = distance(x_x, x_y, proj_x, proj_y);
 
   //see if d value is positive or negative by comparing it to a center point
-
   double center_x = 1000-maps_x[prev_wp];
   double center_y = 2000-maps_y[prev_wp];
   double centerToPos = distance(center_x,center_y,x_x,x_y);
   double centerToRef = distance(center_x,center_y,proj_x,proj_y);
-
   if(centerToPos <= centerToRef)  {
     frenet_d *= -1;
+    }
   }
+//---------------------- end of kludge -----------------------------------------
 
-  // calculate s value
-  double frenet_s = 0;
+
+  /* Use vector cross-product to calc frenet_d value (Sarrus's Rule)
+     Ref: https://en.wikipedia.org/wiki/Cross_product#Matrix_notation
+     The along-leg-path vector needs to be an unit-vector (length=1) for this to work
+  */
+  double leg_length = distance(maps_x[next_wp], maps_y[next_wp],
+                               maps_x[prev_wp], maps_y[prev_wp]);
+
+  n_x = n_x / leg_length; // make it an unit-vector...
+  n_y = n_y / leg_length;
+
+  // Sarrus's Rule for the k-axis (vector 'n' cross-product vector 'X')
+  double frenet_d = x_x*n_y - x_y*n_x;  // positive (+) to RIGHT of centerline path
+
+  // calculate s value along this leg length
+  double frenet_s = x_x*n_x + x_y*n_y; // 'X' dot-product with unit-vector 'n'
+
   for(int i = 0; i < prev_wp; i++)  {
-    frenet_s += distance(maps_x[i],maps_y[i],maps_x[i+1],maps_y[i+1]);
+    // now add all prior leg lengths
+    frenet_s += distance(maps_x[i], maps_y[i],
+                         maps_x[i+1], maps_y[i+1]);
   }
-
-  frenet_s += distance(0,0,proj_x,proj_y);
 
   return {frenet_s,frenet_d};
 }
 
-
-// Transform from Frenet s,d coordinates to map x,y
+/***********************
+ * getXY()
+ * Transform from Frenet s,d coordinates to map x,y
+************************/
 vector<double> getXY(double s,
                      double d,
                      const vector<double> &maps_s,
@@ -137,10 +172,10 @@ vector<double> getXY(double s,
 
   int wp2 = (prev_wp+1)%maps_x.size();
 
-  double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),(maps_x[wp2]-maps_x[prev_wp]));
+  double heading = atan2((maps_y[wp2]-maps_y[prev_wp]), (maps_x[wp2]-maps_x[prev_wp]));
+
   // the x,y,s along the segment
   double seg_s = (s-maps_s[prev_wp]);
-
   double seg_x = maps_x[prev_wp]+seg_s*cos(heading);
   double seg_y = maps_y[prev_wp]+seg_s*sin(heading);
 
@@ -152,6 +187,9 @@ vector<double> getXY(double s,
   return {x,y};
 }
 
+
+/***********************
+************************/
 
 
 #endif /* UTILFUNCTIONS_H_ */
