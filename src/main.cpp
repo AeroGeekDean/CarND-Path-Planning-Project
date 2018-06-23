@@ -10,6 +10,7 @@
 #include "json.hpp"
 #include "UtilFunctions.h" // <--- moved many global helper functions here
 #include "spline.h"
+#include "Vehicle.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -21,6 +22,9 @@ using json = nlohmann::json;
 bool sim_initialized = false;
 steady_clock::time_point time_past;
 duration<double> delta_t;
+
+const double mph2ms = 0.45;
+const double ms2mph = 1/mph2ms;
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -39,6 +43,27 @@ string hasData(string s) {
 
 int main() {
   uWS::Hub h;
+
+  Vehicle ego;
+
+  if (0) // transformation unit testing
+  {
+    ego.setPose(10, // car_x
+                15, // car_y
+                3,  // car_s,
+                6,  // car_d,
+                deg2rad(270.0), // car_yaw
+                25.0 //car_speed
+                );
+
+    Vehicle::Coord wpt_g, wpt_b;
+    wpt_g.x = 20;
+    wpt_g.y = 15;
+    wpt_b = ego.transformGlobal2Ego(wpt_g);
+    wpt_g = ego.transformEgo2Global(wpt_b);
+    cout << "(" << wpt_b.x << ", " << wpt_b.y << ")" << endl;
+    cout << "(" << wpt_g.x << ", " << wpt_g.y << ")" << endl;
+  }
 
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
   vector<double> map_waypoints_x;
@@ -77,10 +102,11 @@ int main() {
   // 181 WPTs...
   cout << "Loaded file: '" << map_file_ << "' with " << map_waypoints_x.size() << " WPTs." << endl;
 
-  h.onMessage([&map_waypoints_x,
+  h.onMessage([&ego,
+               &map_waypoints_x,
                &map_waypoints_y,
                &map_waypoints_s,
-               &map_waypoints_dx,
+               &map_waypoints_dx, // Frenet d unit normal vector (x,y)
                &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws,
                                   char *data, size_t length,
                                   uWS::OpCode opCode) {
@@ -114,10 +140,10 @@ int main() {
         	// Main car's localization Data
           double car_x = j[1]["x"];     // [m]
           double car_y = j[1]["y"];     // [m]
-          double car_s = j[1]["s"];
-          double car_d = j[1]["d"];
-          double car_yaw = j[1]["yaw"]; // [deg]
-          double car_speed = j[1]["speed"];
+          double car_s = j[1]["s"];     // [m]
+          double car_d = j[1]["d"];     // [m]
+          double car_yaw = j[1]["yaw"]; // [deg] (+) yaw left!
+          double car_speed = j[1]["speed"]; // [mph]
 
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
@@ -131,33 +157,104 @@ int main() {
 
        // ---- Above are INPUTS ----
 
-          cout << "dt " << dt << ", Hz " << 1/dt << endl;
+//          cout << "dt " << dt << ", Hz " << 1/dt << endl;
 
 
        // ======== main algorithm goes here ==========
+          ego.setPose(car_x, car_y, car_s, car_d, deg2rad(car_yaw), car_speed);
 
           // containers for algorithm output
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
+          // ---- create a local smoothed WPT sub-database ----
           int num_wpts = map_waypoints_x.size();
+          int next_wpt_idx = NextWaypoint(car_x, car_y, deg2rad(car_yaw), map_waypoints_x, map_waypoints_y);
 
-          int wpt_idx = NextWaypoint(car_x, car_y, deg2rad(car_yaw), map_waypoints_x, map_waypoints_y);
+          vector<double> local_wpts_xb;
+          vector<double> local_wpts_yb;
+          vector<double> local_wpts_s;
 
-          double next_wpt_x = map_waypoints_x[wpt_idx];
-          double next_wpt_y = map_waypoints_y[wpt_idx];
+          Vehicle::Coord wpt_g; // global coord
+          Vehicle::Coord wpt_b; // body coord
 
-          // fill 1st pt with car's current position
-          next_x_vals.push_back(car_x);
-          next_y_vals.push_back(car_y);
-
-          // fill 10 more with straight up wpts... (car's gonna FLY!!!)
-          for (int i = 0; i < 10; i++) {
-            wpt_idx = wpt_idx % num_wpts;
-            next_x_vals.push_back(map_waypoints_x[wpt_idx]);
-            next_y_vals.push_back(map_waypoints_y[wpt_idx]);
-            wpt_idx++;
+          // based on 2 WPTs beind and 2 WPTs in front
+          for (int i=next_wpt_idx-2; i<next_wpt_idx+2; i++)
+          {
+            int j = (i+num_wpts) % num_wpts; // handle both negative and index looping around end
+            wpt_g.x = map_waypoints_x[j];
+            wpt_g.y = map_waypoints_y[j];
+            wpt_b = ego.transformGlobal2Ego(wpt_g); // transform to ego body coord axis
+            local_wpts_xb.push_back( wpt_b.x );
+            local_wpts_yb.push_back( wpt_b.y );
+            local_wpts_s.push_back( map_waypoints_s[j] );
           }
+
+          // create and setup the spline
+          tk::spline local_body_wpt_spline_sx; // s->x
+          local_body_wpt_spline_sx.set_points( local_wpts_s, local_wpts_xb );
+
+          tk::spline local_body_wpt_spline_sy; // s->y
+          local_body_wpt_spline_sy.set_points( local_wpts_s, local_wpts_yb );
+
+
+          // re-use all the remaining prev trajectory points
+//          int prev_path_size = previous_path_x.size();
+          int prev_path_size = 0;
+          //          for (int i=0; i<prev_path_size; i++) {
+//            next_x_vals.push_back(previous_path_x[i]);
+//            next_y_vals.push_back(previous_path_y[i]);
+//          }
+
+          double next_wpt_s;
+          if (prev_path_size==0)
+            next_wpt_s = car_s;
+          else
+            next_wpt_s = end_path_s;
+
+          vector<double> local_smoothed_wpts_x;
+          vector<double> local_smoothed_wpts_y;
+          vector<double> local_smoothed_wpts_s;
+
+          double speed_mph = 30.0; // [mph]
+
+          // ---- create smooth wpt map for 'look ahead' segment ----
+          double look_ahead_time = 2.0; // [sec]
+          int    look_ahead_slices = 10;
+          double ds_look_ahead = look_ahead_time * mph2ms*speed_mph / (double)look_ahead_slices; // [m]
+
+          double temp_s;
+          for (int i=0; i<look_ahead_slices; i++)
+          {
+            temp_s = next_wpt_s + i*ds_look_ahead;
+            wpt_b.x = local_body_wpt_spline_sx(temp_s);
+            wpt_b.y = local_body_wpt_spline_sy(temp_s);
+            wpt_g = ego.transformEgo2Global(wpt_b);
+            local_smoothed_wpts_s.push_back( temp_s );
+            local_smoothed_wpts_x.push_back( wpt_g.x );
+            local_smoothed_wpts_y.push_back( wpt_g.y );
+          }
+
+
+          double dt_ideal = 0.02;  // [sec]
+          double ds = dt_ideal* mph2ms*speed_mph; // [m]
+
+          double next_wpt_d = 6.0; // lane is 4m wide
+
+          cout << car_yaw << ", ";
+
+          // fill to 50 size
+          vector<double> next_wpt;
+          for (int i = 0; i < (50-prev_path_size); i++) {
+            next_wpt_s += ds;
+            cout << next_wpt_s << ", ";
+            next_wpt = getXY(next_wpt_s, next_wpt_d,
+                             local_smoothed_wpts_s, local_smoothed_wpts_x, local_smoothed_wpts_y);
+//                             map_waypoints_s, map_waypoints_x, map_waypoints_y);
+            next_x_vals.push_back(next_wpt[0]);
+            next_y_vals.push_back(next_wpt[1]);
+          }
+          cout << endl;
 
 
 
