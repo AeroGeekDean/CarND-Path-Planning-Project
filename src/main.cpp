@@ -84,7 +84,7 @@ int main() {
   int lane = 1;
 
   // Have a reference velocity to target
-  double ref_vel = 49.5; // [mph]
+  double ref_vel = 0.0; // [mph]
 
   h.onMessage([&ref_vel, &lane,
                &map_waypoints_x,
@@ -139,6 +139,7 @@ int main() {
           double end_path_d = j[1]["end_path_d"];
 
           // Sensor Fusion Data, a list of all other cars on the same side of the road.
+          // data format: for each car [id, x, y, vx, vy, s, d]
           auto sensor_fusion = j[1]["sensor_fusion"]; // vector<vector<double>>
 
           int prev_size = previous_path_x.size();
@@ -149,6 +150,50 @@ int main() {
 
 
        // ======== main algorithm goes here ==========
+
+
+          if (prev_size > 0)
+            car_s = end_path_s; // note: this will impact later code!!!
+
+          bool too_close = false;
+
+          // find ref_v to use
+          for (int i=0; i<sensor_fusion.size(); i++)
+          {
+            // is car in my lane?
+            float d = sensor_fusion[i][6]; // [m]?
+            if ((2+4*lane -2) < d && d < (2+4*lane +2))
+            {
+              double vx = sensor_fusion[i][3];  // [m/s]?
+              double vy = sensor_fusion[i][4];  // [m/s]?
+              double check_speed = sqrt(vx*vx+vy*vy); // [m/s]?  // Note: this only checks straight line in global coord, not aware of lane curves!!!
+              double check_car_s = sensor_fusion[i][5]; // [m]?
+
+              check_car_s += ((double)prev_size* dt_ref*check_speed); // if using previous points can project s value outwards in time
+
+              // check s values greater than mine and s gap
+              if ((check_car_s > car_s) && ((check_car_s - car_s) < 30)) // didn't account for track S-wrap-around
+              {
+                // Do some logic here, lower reference velocity so we don't crash into the car in front of us, could
+                // also flag to try to change lanes.
+//                ref_vel = 29.5; // [mph]
+                 too_close = true;
+                 if (lane > 0)
+                   lane = 0;
+              }
+
+            }
+
+          }
+
+          if (too_close)
+          {
+            ref_vel -= 0.224;
+          }
+          else if (ref_vel < 49.5)
+          {
+            ref_vel += 0.224;
+          }
 
 
           // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
