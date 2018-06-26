@@ -116,8 +116,9 @@ int main() {
           // Compute elapsed time since last frame
           steady_clock::time_point time_now = steady_clock::now();
           delta_t = duration_cast<duration<double>>( time_now - time_past ); // dt in [sec]
-          double dt = delta_t.count();
+          double dt_actual = delta_t.count();
           time_past = time_now; // update past value
+          //          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
 
           double dt_ref = 0.02; // [sec], or 50Hz
 
@@ -146,7 +147,6 @@ int main() {
 
        // ---- Above are INPUTS ----
 
-//          cout << "dt " << dt << ", Hz " << 1/dt << endl;
 
 
        // ======== main algorithm goes here ==========
@@ -156,6 +156,10 @@ int main() {
             car_s = end_path_s; // note: this will impact later code!!!
 
           bool too_close = false;
+
+          /*-------------------
+           * Behavior Planning
+            -------------------*/
 
           // find ref_v to use
           for (int i=0; i<sensor_fusion.size(); i++)
@@ -195,22 +199,30 @@ int main() {
             ref_vel += 0.224;
           }
 
+          /*-----------------------
+           * Trajectory Generation
+            -----------------------*/
 
           // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
-          // Later we will interpolate these waypoints with a spline and fill it in with more points taht control speed
+          // Later we will interpolate these waypoints with a spline and fill it in with more points that control speed
           vector<double> ptsx;
           vector<double> ptsy;
 
           // reference x,y, yaw states
-          // either we will reference the starting point as where the car is, or at the previous path end point
-          double ref_x = car_x;
-          double ref_y = car_y;
-          double ref_yaw = deg2rad(car_yaw);
+          // we will reference the starting point as either where the car is, or at the previous path end point
+          double ref_x;
+          double ref_y;
+          double ref_yaw;
 
-          // if previous size is almost empty use the car as starting reference
-          if (prev_size < 2)
+
+          // fill starting point with 2 points, to establish spline starting angle
+          if (prev_size < 2)  // if previous size is almost empty use the car as starting reference
           {
-            // Use 2 points that make the path tangent to the car
+            ref_x = car_x;
+            ref_y = car_y;
+            ref_yaw = deg2rad(car_yaw);
+
+            // find another point behind the car, to make the spline tangent to the car
             double prev_car_x = car_x - cos(car_yaw);
             double prev_car_y = car_y - sin(car_yaw);
 
@@ -220,16 +232,14 @@ int main() {
             ptsy.push_back(prev_car_y);
             ptsy.push_back(car_y);
           }
-          // use the previous path's end point as starting reference
-          else
+          else  // use the previous path's end point(s) as starting reference
           {
-
-            // redefine reference starte as previous path end point
             ref_x = previous_path_x[prev_size-1];
             ref_y = previous_path_y[prev_size-1];
 
             double ref_x_prev = previous_path_x[prev_size-2];
             double ref_y_prev = previous_path_y[prev_size-2];
+
             ref_yaw = atan2(ref_y-ref_y_prev, ref_x-ref_x_prev);
 
             // Use two points that make the path tangent to the previous path's end point
@@ -246,23 +256,20 @@ int main() {
           vector<double> next_wp1 = getXY(car_s+60, d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
           vector<double> next_wp2 = getXY(car_s+90, d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
-          ptsx.push_back(next_wp0[0]);
-          ptsx.push_back(next_wp1[0]);
-          ptsx.push_back(next_wp2[0]);
+          ptsx.push_back( next_wp0[0] );
+          ptsx.push_back( next_wp1[0] );
+          ptsx.push_back( next_wp2[0] );
 
-          ptsy.push_back(next_wp0[1]);
-          ptsy.push_back(next_wp1[1]);
-          ptsy.push_back(next_wp2[1]);
+          ptsy.push_back( next_wp0[1] );
+          ptsy.push_back( next_wp1[1] );
+          ptsy.push_back( next_wp2[1] );
 
+          // transform from global to local coordinate
           for (int i=0; i<ptsx.size(); i++)
           {
-            // shift car reference angle to 0 deg
-            double shift_x = ptsx[i]-ref_x;
-            double shift_y = ptsy[i]-ref_y;
-
-            double delta_yaw = 0 - ref_yaw;
-            ptsx[i] = (shift_x*cos(delta_yaw) - shift_y*sin(delta_yaw));
-            ptsy[i] = (shift_x*sin(delta_yaw) + shift_y*cos(delta_yaw));
+            vector<double> out = global2local(ptsx[i], ptsy[i], ref_x, ref_y, (0-ref_yaw));
+            ptsx[i] = out[0];
+            ptsy[i] = out[1];
           }
 
           // create a spline
@@ -271,7 +278,7 @@ int main() {
           // set (x,y) points to the spline
           s.set_points(ptsx, ptsy);
 
-          // Define the actual (x,y) points we weill use for the planner
+          // Define the actual (x,y) points we will use for the planner
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
@@ -287,29 +294,17 @@ int main() {
           double target_y = s(target_x);
           double target_dist = sqrt(target_x*target_x + target_y*target_y);
 
-          double x_add_on = 0;
-          double ds = dt_ref*(ref_vel*0.45) * (target_x/target_dist); // s_distance per time step
+          double dx = dt_ref*(ref_vel*0.45) * (target_x/target_dist); // s_distance per time step
+          double x_point = dx;
 
           // Fill up the rest of our path planner after filling it with previous points, here we will always output 50 points
-          for (int i=1; i<=(50-prev_size); i++)
+          for (int i=0; i<(50-prev_size); i++)
           {
-            x_add_on += ds;
-            double x_point = x_add_on;
-            double y_point = s(x_point);
-
-            double x_tmp = x_point;
-            double y_tmp = y_point;
-
-            // rotate fom local to global coord
-            x_point = (x_tmp*cos(ref_yaw) - y_tmp*sin(ref_yaw)) + ref_x;
-            y_point = (x_tmp*sin(ref_yaw) + y_tmp*cos(ref_yaw)) + ref_y;
-
-            next_x_vals.push_back(x_point);
-            next_y_vals.push_back(y_point);
+            vector<double> out = local2global(x_point, s(x_point), ref_x, ref_y, (ref_yaw));
+            next_x_vals.push_back(out[0]);
+            next_y_vals.push_back(out[1]);
+            x_point += dx;
           }
-
-
-
 
 
        // ---- Below are OUTPUTS ----

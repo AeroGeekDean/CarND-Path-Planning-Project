@@ -189,7 +189,30 @@ vector<double> getXY(double s,
 
 
 /***********************
+ * global2local()
 ************************/
+vector<double> global2local(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
+{
+ vector<double> out;
+ double dx = x_in-x_ref;
+ double dy = y_in-y_ref;
+ out.push_back( dx*cos(del_theta) - dy*sin(del_theta) );
+ out.push_back( dx*sin(del_theta) + dy*cos(del_theta) );
+ return out;
+}
+
+/***********************
+ * local2global()
+************************/
+vector<double> local2global(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
+{
+  vector<double> out;
+  out.push_back( x_in*cos(del_theta) - y_in*sin(del_theta) + x_ref );
+  out.push_back( x_in*sin(del_theta) + y_in*cos(del_theta) + y_ref );
+  return out;
+}
 
 
+/***********************
+************************/
 #endif /* UTILFUNCTIONS_H_ */
