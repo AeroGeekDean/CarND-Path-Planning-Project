@@ -11,6 +11,8 @@
 class Vehicle {
   public:
     Vehicle();
+    Vehicle(double x, double y, double s, double d, double yaw, double spd);
+
     virtual ~Vehicle();
 
 
@@ -20,12 +22,12 @@ class Vehicle {
       double y;
     };
 
-    double getX() const {return m_x;}
-    double getY() const {return m_y;}
-    double getS() const {return m_s;}
-    double getD() const {return m_d;}
-    double getYaw() const {return m_yaw;}
-    double getSpeed() const {return m_speed;}
+//    double getX() const {return m_x;}
+//    double getY() const {return m_y;}
+//    double getS() const {return m_s;}
+//    double getD() const {return m_d;}
+//    double getYaw() const {return m_yaw;}
+//    double getSpeed() const {return m_speed;}
 
 //    void setX(double x) {m_x = x;}
 //    void setY(double y) {m_y = y;}
@@ -36,16 +38,24 @@ class Vehicle {
 
     void setPose(double x, double y, double s, double d, double yaw, double spd);
 
-    Coord transformGlobal2Ego(Coord in);
-    Coord transformEgo2Global(Coord in);
+//    void setPose(double x, double y, double s, double d, double vx, double vy);
+
+//    Coord transformGlobal2Ego(Coord in);
+//    Coord transformEgo2Global(Coord in);
 
   private:
-    double m_x;     // [m]
-    double m_y;     // [m]
-    double m_s;     // [m]
-    double m_d;     // [m]
-    double m_yaw;   // [rad]
-    double m_speed; // [mph]
+
+    double m_x;     // global position x, [m]
+    double m_y;     // global position y, [m]
+    double m_s;     // frenet position s, [m]
+    double m_d;     // frenet position d, [m]
+    double m_yaw;   // global track angle, [rad] (+) rotate from x->y axis
+    double m_speed; // speed, [m/s]
+//    double m_vx;    // global velocity x-component, [m/s]
+//    double m_vy;    // global velocity y-component, [m/s]
+
+    double m_yaw_ds; // frenet track angle, [rad] (+)???
+    double m_a;     // acceleration
 
 };
 

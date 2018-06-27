@@ -10,27 +10,36 @@
 
 #include <math.h>
 
-using namespace std;
+using std::vector;
+using std::min;
 
+const double mph2ms = 0.45;
+const double ms2mph = 1/mph2ms;
 
 // For converting back and forth between radian and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
+inline constexpr double pi() { return M_PI; }
+inline double deg2rad(double x) { return x * pi() / 180; }
+inline double rad2deg(double x) { return x * 180 / pi(); }
+
+/************************
+ * magnitude()
+ ***********************/
+inline double magnitude(double x, double y) { return sqrt(x*x+y*y); }
 
 /************************
  * distance()
  ***********************/
-double distance(double x1, double y1, double x2, double y2)
+inline double distance(double x1, double y1, double x2, double y2)
 {
-  return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+  return magnitude((x2-x1), (y2-y1));
+//  return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
 }
 
 /*************************
  * ClosestWaypoint()
  * Finds the closest WPT
  ************************/
-int ClosestWaypoint(double x,
+inline int ClosestWaypoint(double x,
                     double y,
                     const vector<double> &maps_x,
                     const vector<double> &maps_y)
@@ -56,7 +65,7 @@ int ClosestWaypoint(double x,
  * Finds the next WPT
  * (based on car orientation ONLY!!)
  ************************/
-int NextWaypoint(double x,
+inline int NextWaypoint(double x,
                  double y,
                  double theta,
                  const vector<double> &maps_x,
@@ -83,7 +92,7 @@ int NextWaypoint(double x,
  * getFrenet()
  * Transform from map x,y coordinates to Frenet s,d coordinates
 ************************/
-vector<double> getFrenet(double x,
+inline vector<double> getFrenet(double x,
                          double y,
                          double theta,
                          const vector<double> &maps_x,
@@ -157,7 +166,7 @@ vector<double> getFrenet(double x,
  * getXY()
  * Transform from Frenet s,d coordinates to map x,y
 ************************/
-vector<double> getXY(double s,
+inline vector<double> getXY(double s,
                      double d,
                      const vector<double> &maps_s,
                      const vector<double> &maps_x,
@@ -191,12 +200,12 @@ vector<double> getXY(double s,
 /***********************
  * global2local()
 ************************/
-vector<double> global2local(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
+inline vector<double> global2local(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
 {
  vector<double> out;
- double dx = x_in-x_ref;
+ double dx = x_in-x_ref; // translation
  double dy = y_in-y_ref;
- out.push_back( dx*cos(del_theta) - dy*sin(del_theta) );
+ out.push_back( dx*cos(del_theta) - dy*sin(del_theta) ); // rotation
  out.push_back( dx*sin(del_theta) + dy*cos(del_theta) );
  return out;
 }
@@ -204,11 +213,11 @@ vector<double> global2local(double x_in, double y_in, double x_ref, double y_ref
 /***********************
  * local2global()
 ************************/
-vector<double> local2global(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
+inline vector<double> local2global(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
 {
   vector<double> out;
-  out.push_back( x_in*cos(del_theta) - y_in*sin(del_theta) + x_ref );
-  out.push_back( x_in*sin(del_theta) + y_in*cos(del_theta) + y_ref );
+  out.push_back( (x_in*cos(del_theta) - y_in*sin(del_theta)) + x_ref ); // first rotate then translate
+  out.push_back( (x_in*sin(del_theta) + y_in*cos(del_theta)) + y_ref );
   return out;
 }
 

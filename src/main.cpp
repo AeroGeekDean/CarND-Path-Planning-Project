@@ -10,6 +10,8 @@
 #include "json.hpp"
 #include "UtilFunctions.h" // <--- moved many global helper functions here
 #include "spline.h"
+#include "TrafficManager.h"
+#include "EgoVehicle.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -21,9 +23,6 @@ using json = nlohmann::json;
 bool sim_initialized = false;
 steady_clock::time_point time_past;
 duration<double> delta_t;
-
-const double mph2ms = 0.45;
-const double ms2mph = 1/mph2ms;
 
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
@@ -80,13 +79,17 @@ int main() {
   // 181 WPTs...
   cout << "Loaded file: '" << map_file_ << "' with " << map_waypoints_x.size() << " WPTs." << endl;
 
+  // create major components...
+  TrafficManager traffic_mgr;
+  EgoVehicle ego;
+
   // start in lane 1;
   int lane = 1;
 
   // Have a reference velocity to target
   double ref_vel = 0.0; // [mph]
 
-  h.onMessage([&ref_vel, &lane,
+  h.onMessage([&ref_vel, &lane, &max_s, &traffic_mgr, &ego,
                &map_waypoints_x,
                &map_waypoints_y,
                &map_waypoints_s,
@@ -151,9 +154,18 @@ int main() {
 
        // ======== main algorithm goes here ==========
 
+          /*---------------------
+           * Traffic Predictions
+            ---------------------*/
 
+          traffic_mgr.update_traffic(sensor_fusion);
+          traffic_mgr.predict();
+
+
+
+          double car_s_future;
           if (prev_size > 0)
-            car_s = end_path_s; // note: this will impact later code!!!
+            car_s_future = end_path_s; // note: this will impact later code!!!
 
           bool too_close = false;
 
@@ -161,9 +173,24 @@ int main() {
            * Behavior Planning
             -------------------*/
 
+          ego.setPose(car_x, car_y, car_s, car_d, deg2rad(car_yaw), mph2ms*car_speed);
+          ego.chooseNextState();
+          ego.realizeNextState();
+
+
+          cout << "number of sensed vehicles: " << sensor_fusion.size() << " {";
+
           // find ref_v to use
           for (int i=0; i<sensor_fusion.size(); i++)
           {
+            string ahead;
+            double traffic_s = sensor_fusion[i][5];
+            double dist_ahead = traffic_s - car_s;
+            while (dist_ahead >   (max_s/2)) dist_ahead -= max_s; // constraint to -(max_s/2) < X <= (max_s/2)
+            while (dist_ahead <= -(max_s/2)) dist_ahead += max_s;
+            if (dist_ahead > 0) ahead = "*";
+            else                ahead = "_";
+
             // is car in my lane?
             float d = sensor_fusion[i][6]; // [m]?
             if ((2+4*lane -2) < d && d < (2+4*lane +2))
@@ -176,7 +203,7 @@ int main() {
               check_car_s += ((double)prev_size* dt_ref*check_speed); // if using previous points can project s value outwards in time
 
               // check s values greater than mine and s gap
-              if ((check_car_s > car_s) && ((check_car_s - car_s) < 30)) // didn't account for track S-wrap-around
+              if ((check_car_s > car_s_future) && ((check_car_s - car_s_future) < 30)) // didn't account for track S-wrap-around
               {
                 // Do some logic here, lower reference velocity so we don't crash into the car in front of us, could
                 // also flag to try to change lanes.
@@ -185,10 +212,17 @@ int main() {
                  if (lane > 0)
                    lane = 0;
               }
-
+              cout << "<" << ahead << sensor_fusion[i][0] << ">, ";
+            }
+            else
+            {
+              cout << " " << ahead << sensor_fusion[i][0] << " , ";
             }
 
           }
+
+          cout << endl;
+
 
           if (too_close)
           {
@@ -294,7 +328,7 @@ int main() {
           double target_y = s(target_x);
           double target_dist = sqrt(target_x*target_x + target_y*target_y);
 
-          double dx = dt_ref*(ref_vel*0.45) * (target_x/target_dist); // s_distance per time step
+          double dx = dt_ref*(ref_vel*mph2ms) * (target_x/target_dist); // s_distance per time step
           double x_point = dx;
 
           // Fill up the rest of our path planner after filling it with previous points, here we will always output 50 points
