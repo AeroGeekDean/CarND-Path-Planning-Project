@@ -8,9 +8,11 @@ set(CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS, "${CXX_FLAGS}")
 
 set(sources
+		./Track.cpp
 		./TrafficManager.cpp
 		./Vehicle.cpp
 		./EgoVehicle.cpp
+		./TrajectoryGenerator.cpp
     ./main.cpp)
 
 

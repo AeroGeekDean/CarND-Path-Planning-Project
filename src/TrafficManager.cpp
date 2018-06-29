@@ -15,7 +15,8 @@ using std::vector;
 using std::cout;
 using std::endl;
 
-TrafficManager::TrafficManager()
+TrafficManager::TrafficManager(Track& trk)
+:track(trk)
 {
 
 }
@@ -25,35 +26,44 @@ TrafficManager::~TrafficManager()
 
 }
 
-void TrafficManager::update_traffic(vector<vector<double>> traffic_in)
+void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
 {
   m_vehicles.clear(); // clear out past data
 
-  for (auto itr = traffic_in.begin(); itr!=traffic_in.end(); itr++)
+  for (auto itr=traffic_in.begin(); itr!=traffic_in.end(); itr++)
   {
-    vector<double> traffic_data = *itr;
+    vector<double> data = *itr;
 
-    int id = (int)traffic_data[0];
-    double x =    traffic_data[1];
-    double y =    traffic_data[2];
-    double vx =   traffic_data[3];
-    double vy =   traffic_data[4];
-    double s =    traffic_data[5];
-    double d =    traffic_data[6];
+    int id = (int)data[0];
+    Vehicle::Pose p;
+      p.x =       data[1];
+      p.y =       data[2];
+      double vx = data[3];
+      double vy = data[4];
+      p.s =       data[5];
+      p.d =       data[6];
+      p.yaw =     atan2(vy, vx);
+      p.spd =     magnitude(vx, vy);
+    Vehicle vehicle(track, p);
 
-    Vehicle vehicle = Vehicle(x, y, s, d, atan2(vy, vx), magnitude(vx, vy));
-    m_vehicles.insert(std::pair<int,Vehicle>(id, vehicle));
+    m_vehicles.insert( {id, vehicle} );
   }
 
 }
 
 void TrafficManager::predict()
 {
-  // contain predictions of all traffic vehicles
-  map<int, vector<Vehicle>> predictions;
+  float time_horizon = 2.0; // predict 2.0 sec ahead in future
+  float dt_pred = 0.5;      // time step for prediction
+
+  m_predictions.clear();
 
   // get all traffic vehicles to create prediction of itself into the future
+  for (auto itr=m_vehicles.begin(); itr!=m_vehicles.end(); itr++ )
+  {
+    int id = itr->first;
+    vector<Vehicle::Pose> trajectory = itr->second.trajectoryPrediction(time_horizon, dt_pred);
 
-
-  // return what? prediction? what class holds the prediction data??
+    m_predictions.insert( {id, trajectory} );
+  }
 }

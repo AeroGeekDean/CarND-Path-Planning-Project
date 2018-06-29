@@ -10,6 +10,7 @@
 #include "json.hpp"
 #include "UtilFunctions.h" // <--- moved many global helper functions here
 #include "spline.h"
+#include "Track.h"
 #include "TrafficManager.h"
 #include "EgoVehicle.h"
 
@@ -42,18 +43,13 @@ string hasData(string s) {
 int main() {
   uWS::Hub h;
 
-  // Load up map values for waypoint's x,y,s and d normalized normal vectors
-  vector<double> map_waypoints_x;
-  vector<double> map_waypoints_y;
-  vector<double> map_waypoints_s;
-  vector<double> map_waypoints_dx;
-  vector<double> map_waypoints_dy;
+  // create major components
+  Track track;
+  TrafficManager traffic_mgr(track);
+  EgoVehicle ego(track);
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
-  // The max s value before wrapping around the track back to 0
-  double max_s = 6945.554;
-
   ifstream in_map_(map_file_.c_str(), ifstream::in);
 
   string line;
@@ -69,19 +65,20 @@ int main() {
   	iss >> s;
   	iss >> d_x;
   	iss >> d_y;
-  	map_waypoints_x.push_back(x);
-  	map_waypoints_y.push_back(y);
-  	map_waypoints_s.push_back(s);
-  	map_waypoints_dx.push_back(d_x);
-  	map_waypoints_dy.push_back(d_y);
+  	track.map_waypoints_x.push_back(x);
+  	track.map_waypoints_y.push_back(y);
+  	track.map_waypoints_s.push_back(s);
+  	track.map_waypoints_dx.push_back(d_x);
+  	track.map_waypoints_dy.push_back(d_y);
   }
 
-  // 181 WPTs...
-  cout << "Loaded file: '" << map_file_ << "' with " << map_waypoints_x.size() << " WPTs." << endl;
+  track.processWpts();
 
-  // create major components...
-  TrafficManager traffic_mgr;
-  EgoVehicle ego;
+  // 181 WPTs...
+  cout << "Loaded file: '" << map_file_ << "' with " << track.m_num_wpts << " WPTs." << endl;
+
+  // The max s value before wrapping around the track back to 0
+  double max_s = 6945.554;
 
   // start in lane 1;
   int lane = 1;
@@ -89,14 +86,13 @@ int main() {
   // Have a reference velocity to target
   double ref_vel = 0.0; // [mph]
 
-  h.onMessage([&ref_vel, &lane, &max_s, &traffic_mgr, &ego,
-               &map_waypoints_x,
-               &map_waypoints_y,
-               &map_waypoints_s,
-               &map_waypoints_dx, // Frenet d unit normal vector (x,y)
-               &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws,
-                                  char *data, size_t length,
-                                  uWS::OpCode opCode) {
+  h.onMessage([&track, &traffic_mgr, &ego,
+               &ref_vel, &lane, &max_s
+               ]
+               (uWS::WebSocket<uWS::SERVER> ws,
+                 char *data, size_t length,
+                 uWS::OpCode opCode)
+  {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -158,7 +154,7 @@ int main() {
            * Traffic Predictions
             ---------------------*/
 
-          traffic_mgr.update_traffic(sensor_fusion);
+          traffic_mgr.updateTraffic(sensor_fusion);
           traffic_mgr.predict();
 
 
@@ -173,9 +169,22 @@ int main() {
            * Behavior Planning
             -------------------*/
 
-          ego.setPose(car_x, car_y, car_s, car_d, deg2rad(car_yaw), mph2ms*car_speed);
-          ego.chooseNextState();
-          ego.realizeNextState();
+          Vehicle::Pose p;
+            p.x = car_x;
+            p.y = car_y;
+            p.s = car_s;
+            p.d = car_d;
+            p.yaw = deg2rad(car_yaw);
+            p.spd = mph2ms*car_speed;
+          ego.setPose(p);
+
+          ego.chooseNextState( traffic_mgr.m_predictions );
+
+//          ego.realizeNextState(); // this would be trajectory generation to pass to simulator
+
+
+
+
 
 
           cout << "number of sensed vehicles: " << sensor_fusion.size() << " {";
@@ -286,9 +295,10 @@ int main() {
 
           // In Frenet add evenly 30m spaced points ahead of the starting reference
           double d = 2+4*lane;
-          vector<double> next_wp0 = getXY(car_s+30, d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp1 = getXY(car_s+60, d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          vector<double> next_wp2 = getXY(car_s+90, d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+          vector<double> next_wp0 = track.getXY(car_s+30, d);
+          vector<double> next_wp1 = track.getXY(car_s+60, d);
+          vector<double> next_wp2 = track.getXY(car_s+90, d);
 
           ptsx.push_back( next_wp0[0] );
           ptsx.push_back( next_wp1[0] );
