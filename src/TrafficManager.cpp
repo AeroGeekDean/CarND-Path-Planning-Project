@@ -16,7 +16,7 @@ using std::cout;
 using std::endl;
 
 TrafficManager::TrafficManager(Track& trk)
-:track(trk)
+:m_rTrack(trk)
 {
 
 }
@@ -35,7 +35,7 @@ void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
     vector<double> data = *itr;
 
     int id = (int)data[0];
-    Vehicle::Pose p;
+    Pose p;
       p.x =       data[1];
       p.y =       data[2];
       double vx = data[3];
@@ -44,7 +44,9 @@ void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
       p.d =       data[6];
       p.yaw =     atan2(vy, vx);
       p.spd =     magnitude(vx, vy);
-    Vehicle vehicle(track, p);
+
+    Vehicle vehicle(m_rTrack);
+    vehicle.updatePose(p);
 
     m_vehicles.insert( {id, vehicle} );
   }
@@ -62,7 +64,7 @@ void TrafficManager::predict()
   for (auto itr=m_vehicles.begin(); itr!=m_vehicles.end(); itr++ )
   {
     int id = itr->first;
-    vector<Vehicle::Pose> trajectory = itr->second.trajectoryPrediction(time_horizon, dt_pred);
+    vector<Pose> trajectory = itr->second.trajectoryPrediction(time_horizon, dt_pred);
 
     m_predictions.insert( {id, trajectory} );
   }

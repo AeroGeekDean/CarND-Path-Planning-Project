@@ -9,39 +9,36 @@
 #define VEHICLE_H_
 
 #include "Track.h"
+#include "Pose.h"
 #include <vector>
 
 using std::vector;
 
 class Vehicle {
   public:
-    struct Pose
-    {
-      double x;
-      double y;
-      double s;
-      double d;
-      double vx;
-      double vy;
-      double yaw;
-      double spd;
-    };
 
     Vehicle(Track& trk);
-    Vehicle(Track& trk, Pose p);
 
     virtual ~Vehicle();
 
-    void setPose(Pose p);
+    void updatePose(const Pose& p);
+    const Pose& getPose() const { return m_pose; }
+
     Pose propagatePose(float t);
+    Pose propagatePoseInertial(float t);
+    Pose propagatePoseFrenet(float t);
 
     vector<Pose> trajectoryPrediction(float time_horizon=2.0, float dt=0.5);
+
+    int getLane() const { return m_lane; }
+
+    Track& m_rTrack;  // reference to the track object for global/frenet conversion services
 
   protected:
 
     Pose m_pose;
 
-    int lane; // starting with far left lane = 0
+    int m_lane; // starting with far left lane = 0
     int lanes_available = 3;
 
 //    double m_vx;    // global velocity x-component, [m/s]
@@ -49,8 +46,6 @@ class Vehicle {
 
     double m_yaw_ds; // frenet track angle, [rad] (+)???
     double m_a;     // acceleration
-
-    Track& track;  // reference to the track object for global/frenet conversion services
 
   private:
 

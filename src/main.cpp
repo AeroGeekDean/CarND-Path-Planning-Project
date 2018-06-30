@@ -13,6 +13,7 @@
 #include "Track.h"
 #include "TrafficManager.h"
 #include "EgoVehicle.h"
+#include "Pose.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -45,6 +46,8 @@ int main() {
 
   // create major components
   Track track;
+  track.m_num_lanes_available = 3;
+
   TrafficManager traffic_mgr(track);
   EgoVehicle ego(track);
 
@@ -169,16 +172,19 @@ int main() {
            * Behavior Planning
             -------------------*/
 
-          Vehicle::Pose p;
+          Pose p;
             p.x = car_x;
             p.y = car_y;
             p.s = car_s;
             p.d = car_d;
             p.yaw = deg2rad(car_yaw);
             p.spd = mph2ms*car_speed;
-          ego.setPose(p);
+          ego.updatePose(p);
 
-          ego.chooseNextState( traffic_mgr.m_predictions );
+          ego.m_TrajGen.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
+          ego.m_TrajGen.m_dt = dt_ref;
+
+//          vector<Pose> traj_out = ego.m_TrajGen.chooseNextState( traffic_mgr.m_predictions );
 
 //          ego.realizeNextState(); // this would be trajectory generation to pass to simulator
 
@@ -242,114 +248,16 @@ int main() {
             ref_vel += 0.224;
           }
 
+          ego.m_TrajGen.m_ref_vel = ref_vel*mph2ms;
+          ego.m_TrajGen.m_lane = lane;
+
           /*-----------------------
            * Trajectory Generation
             -----------------------*/
 
-          // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
-          // Later we will interpolate these waypoints with a spline and fill it in with more points that control speed
-          vector<double> ptsx;
-          vector<double> ptsy;
-
-          // reference x,y, yaw states
-          // we will reference the starting point as either where the car is, or at the previous path end point
-          double ref_x;
-          double ref_y;
-          double ref_yaw;
-
-
-          // fill starting point with 2 points, to establish spline starting angle
-          if (prev_size < 2)  // if previous size is almost empty use the car as starting reference
-          {
-            ref_x = car_x;
-            ref_y = car_y;
-            ref_yaw = deg2rad(car_yaw);
-
-            // find another point behind the car, to make the spline tangent to the car
-            double prev_car_x = car_x - cos(car_yaw);
-            double prev_car_y = car_y - sin(car_yaw);
-
-            ptsx.push_back(prev_car_x);
-            ptsx.push_back(car_x);
-
-            ptsy.push_back(prev_car_y);
-            ptsy.push_back(car_y);
-          }
-          else  // use the previous path's end point(s) as starting reference
-          {
-            ref_x = previous_path_x[prev_size-1];
-            ref_y = previous_path_y[prev_size-1];
-
-            double ref_x_prev = previous_path_x[prev_size-2];
-            double ref_y_prev = previous_path_y[prev_size-2];
-
-            ref_yaw = atan2(ref_y-ref_y_prev, ref_x-ref_x_prev);
-
-            // Use two points that make the path tangent to the previous path's end point
-            ptsx.push_back(ref_x_prev);
-            ptsx.push_back(ref_x);
-
-            ptsy.push_back(ref_y_prev);
-            ptsy.push_back(ref_y);
-          }
-
-          // In Frenet add evenly 30m spaced points ahead of the starting reference
-          double d = 2+4*lane;
-
-          vector<double> next_wp0 = track.getXY(car_s+30, d);
-          vector<double> next_wp1 = track.getXY(car_s+60, d);
-          vector<double> next_wp2 = track.getXY(car_s+90, d);
-
-          ptsx.push_back( next_wp0[0] );
-          ptsx.push_back( next_wp1[0] );
-          ptsx.push_back( next_wp2[0] );
-
-          ptsy.push_back( next_wp0[1] );
-          ptsy.push_back( next_wp1[1] );
-          ptsy.push_back( next_wp2[1] );
-
-          // transform from global to local coordinate
-          for (int i=0; i<ptsx.size(); i++)
-          {
-            vector<double> out = global2local(ptsx[i], ptsy[i], ref_x, ref_y, (0-ref_yaw));
-            ptsx[i] = out[0];
-            ptsy[i] = out[1];
-          }
-
-          // create a spline
-          tk::spline s;
-
-          // set (x,y) points to the spline
-          s.set_points(ptsx, ptsy);
-
-          // Define the actual (x,y) points we will use for the planner
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
-          // Start with all of the previous path points from the last frame
-          for (int i=0; i<prev_size; i++)
-          {
-            next_x_vals.push_back(previous_path_x[i]);
-            next_y_vals.push_back(previous_path_y[i]);
-          }
-
-          // Calculate how to break up spline points so that we travel at our desired reference velocity
-          double target_x = 30.0;
-          double target_y = s(target_x);
-          double target_dist = sqrt(target_x*target_x + target_y*target_y);
-
-          double dx = dt_ref*(ref_vel*mph2ms) * (target_x/target_dist); // s_distance per time step
-          double x_point = dx;
-
-          // Fill up the rest of our path planner after filling it with previous points, here we will always output 50 points
-          for (int i=0; i<(50-prev_size); i++)
-          {
-            vector<double> out = local2global(x_point, s(x_point), ref_x, ref_y, (ref_yaw));
-            next_x_vals.push_back(out[0]);
-            next_y_vals.push_back(out[1]);
-            x_point += dx;
-          }
-
+          vector<vector<double>> traj_output = ego.m_TrajGen.getTrajectoryOutput();
+          vector<double> next_x_vals = traj_output[0];
+          vector<double> next_y_vals = traj_output[1];
 
        // ---- Below are OUTPUTS ----
 

@@ -9,28 +9,18 @@
 #define EGOVEHICLE_H_
 
 #include "Vehicle.h"
-#include <string>
-#include <map>
-
-using std::string;
-using std::map;
+#include "TrajectoryGenerator.h"
 
 class EgoVehicle : public Vehicle {
  public:
   EgoVehicle(Track& trk);
-  EgoVehicle(Track& trk, Pose p);
 
   virtual ~EgoVehicle();
 
-  vector<Pose> chooseNextState( map<int, vector<Pose>> predictions );
+  TrajectoryGenerator m_TrajGen;
 
  private:
 
-  vector<string> possibleSuccessorStates();
-  vector<Pose> generate_trajectory(string state, map<int, vector<Pose>> predictions);
-  float calculate_cost(Pose pose, map<int,vector<Pose>> predictions, vector<Pose> trajectory);
-
-  string m_state;
 };
 
 #endif /* EGOVEHICLE_H_ */

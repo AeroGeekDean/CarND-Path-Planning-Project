@@ -25,7 +25,6 @@ class Track {
   vector<double> getFrenet(double x, double y, double theta);
   vector<double> getXY(double s, double d);
 
-
   vector<double> map_waypoints_x;
   vector<double> map_waypoints_y;
   vector<double> map_waypoints_s;
@@ -35,6 +34,7 @@ class Track {
   vector<double> map_waypoints_dy;
 
   int m_num_wpts;
+  int m_num_lanes_available;
 
  private:
 

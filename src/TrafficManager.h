@@ -28,11 +28,11 @@ class TrafficManager {
   map<int, Vehicle> m_vehicles;
 
   // contains predictions of all traffic vehicles
-  map<int, vector<Vehicle::Pose>> m_predictions;
+  map<int, vector<Pose>> m_predictions;
 
  private:
 
-  Track& track;  // reference to the track object for global/frenet conversion services
+  Track& m_rTrack;  // reference to the track object for global/frenet conversion services
 };
 
 #endif /* TRAFFICMANAGER_H_ */
