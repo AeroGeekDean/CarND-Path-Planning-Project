@@ -1,12 +1,12 @@
 /*
- * TrajectoryGenerator.h
+ * PathPlanner.h
  *
  *  Created on: Jun 29, 2018
  *      Author: deanliu
  */
 
-#ifndef TRAJECTORYGENERATOR_H_
-#define TRAJECTORYGENERATOR_H_
+#ifndef PATHPLANNER_H_
+#define PATHPLANNER_H_
 
 #include <string>
 #include <map>
@@ -19,23 +19,27 @@ using std::string;
 using std::map;
 using std::vector;
 
-class TrajectoryGenerator {
+class PathPlanner {
  public:
 
-  TrajectoryGenerator(EgoVehicle& ego);
+  PathPlanner(EgoVehicle& ego);
 
-  virtual ~TrajectoryGenerator();
+  virtual ~PathPlanner();
 
   void updatePrevPath(vector<double> path_x, vector<double> path_y,
                       double end_s, double end_d);
 
   vector<Pose> chooseNextState(const map<int,vector<Pose>>& predictions );
 
-  vector<vector<double>> getTrajectoryOutput();
+  vector<Pose> getTrajectoryOutput(int lane,
+                                   double vref_in,
+                                   int num_pp_pts=-1); // -1 = use all prev path pts, otherwise specify
 
   float m_dt;  // [sec]
   double m_ref_vel; // [m/s]
   int m_lane;
+  double accel_lim; // [m/s] delta-velocity limit per time step
+  double jerk_lim; // [m/s^2] delta-accleration limit per time step
 
  private:
 
@@ -64,4 +68,4 @@ class TrajectoryGenerator {
   EgoVehicle& m_rEgo;
 };
 
-#endif /* TRAJECTORYGENERATOR_H_ */
+#endif /* PATHPLANNER_H_ */

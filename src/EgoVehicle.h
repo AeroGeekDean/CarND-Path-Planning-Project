@@ -8,8 +8,8 @@
 #ifndef EGOVEHICLE_H_
 #define EGOVEHICLE_H_
 
+#include "PathPlanner.h"
 #include "Vehicle.h"
-#include "TrajectoryGenerator.h"
 
 class EgoVehicle : public Vehicle {
  public:
@@ -17,7 +17,7 @@ class EgoVehicle : public Vehicle {
 
   virtual ~EgoVehicle();
 
-  TrajectoryGenerator m_TrajGen;
+  PathPlanner m_PathPlanner;
 
  private:
 

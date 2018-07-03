@@ -12,7 +12,7 @@ set(sources
 		./TrafficManager.cpp
 		./Vehicle.cpp
 		./EgoVehicle.cpp
-		./TrajectoryGenerator.cpp
+		./PathPlanner.cpp
     ./main.cpp)
 
 

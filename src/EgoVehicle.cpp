@@ -8,7 +8,7 @@
 #include "EgoVehicle.h"
 
 EgoVehicle::EgoVehicle(Track& trk)
-:Vehicle(trk), m_TrajGen(*this)
+:Vehicle(trk), m_PathPlanner(*this)
 {
 
 }

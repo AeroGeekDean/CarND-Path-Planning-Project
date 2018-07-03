@@ -49,6 +49,7 @@ Pose Vehicle::propagatePoseFrenet(float t)
     p_new.vx = p_new.spd*cos(p_new.yaw);
     p_new.vy = p_new.spd*cos(p_new.yaw);
 
+    return p_new;
 }
 
 Pose Vehicle::propagatePoseInertial(float t)

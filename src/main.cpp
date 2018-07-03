@@ -44,17 +44,27 @@ string hasData(string s) {
 int main() {
   uWS::Hub h;
 
+  int lane = 1;
+  double ref_vel    = 49.0; // [mph]
+  double dt_ref     = 0.02; // [sec], or 50Hz
+  double accel_lim  = 5.0; // [m/s^2], rubic limit = 10.0
+  double jerk_lim   = 5.0; // [m/s^3], rubic limit = 10.0
+
+
   // create major components
   Track track;
-  track.m_num_lanes_available = 3;
-
   TrafficManager traffic_mgr(track);
   EgoVehicle ego(track);
+
+  ego.m_PathPlanner.m_dt = dt_ref;
+  ego.m_PathPlanner.accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
+  ego.m_PathPlanner.jerk_lim = jerk_lim*dt_ref;  // set jerk limit, as max delta-a per time step
+
+  track.m_num_lanes_available = 3;
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
   ifstream in_map_(map_file_.c_str(), ifstream::in);
-
   string line;
   while (getline(in_map_, line)) {
   	istringstream iss(line);
@@ -74,7 +84,6 @@ int main() {
   	track.map_waypoints_dx.push_back(d_x);
   	track.map_waypoints_dy.push_back(d_y);
   }
-
   track.processWpts();
 
   // 181 WPTs...
@@ -83,18 +92,9 @@ int main() {
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
-  // start in lane 1;
-  int lane = 1;
-
-  // Have a reference velocity to target
-  double ref_vel = 0.0; // [mph]
-
-  h.onMessage([&track, &traffic_mgr, &ego,
-               &ref_vel, &lane, &max_s
-               ]
-               (uWS::WebSocket<uWS::SERVER> ws,
-                 char *data, size_t length,
-                 uWS::OpCode opCode)
+  h.onMessage([&track, &traffic_mgr, &ego, &ref_vel, &lane, &max_s]
+               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+                uWS::OpCode opCode)
   {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -108,21 +108,6 @@ int main() {
         string event = j[0].get<string>();
 
         if (event == "telemetry") {
-
-          // --- Time ---
-          if (!sim_initialized) {
-            time_past = steady_clock::now();
-            sim_initialized = true;
-          }
-
-          // Compute elapsed time since last frame
-          steady_clock::time_point time_now = steady_clock::now();
-          delta_t = duration_cast<duration<double>>( time_now - time_past ); // dt in [sec]
-          double dt_actual = delta_t.count();
-          time_past = time_now; // update past value
-          //          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
-
-          double dt_ref = 0.02; // [sec], or 50Hz
 
           // j[1] is the data JSON object
 
@@ -147,6 +132,20 @@ int main() {
 
           int prev_size = previous_path_x.size();
 
+          // --- Time ---
+          if (!sim_initialized) {
+            time_past = steady_clock::now();
+            sim_initialized = true;
+          }
+
+          // Compute elapsed time since last frame
+          steady_clock::time_point time_now = steady_clock::now();
+          delta_t = duration_cast<duration<double>>( time_now - time_past ); // dt in [sec]
+          double dt_actual = delta_t.count();
+          time_past = time_now; // update past value
+          //          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
+
+
        // ---- Above are INPUTS ----
 
 
@@ -160,17 +159,13 @@ int main() {
           traffic_mgr.updateTraffic(sensor_fusion);
           traffic_mgr.predict();
 
-
-
           double car_s_future;
           if (prev_size > 0)
             car_s_future = end_path_s; // note: this will impact later code!!!
 
-          bool too_close = false;
-
-          /*-------------------
-           * Behavior Planning
-            -------------------*/
+          /*------------------
+           * Update Ego Data
+            -----------------*/
 
           Pose p;
             p.x = car_x;
@@ -181,19 +176,19 @@ int main() {
             p.spd = mph2ms*car_speed;
           ego.updatePose(p);
 
-          ego.m_TrajGen.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
-          ego.m_TrajGen.m_dt = dt_ref;
+          ego.m_PathPlanner.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
 
-//          vector<Pose> traj_out = ego.m_TrajGen.chooseNextState( traffic_mgr.m_predictions );
+//          vector<Pose> traj_out = ego.m_PathPlanner.chooseNextState( traffic_mgr.m_predictions );
 
 //          ego.realizeNextState(); // this would be trajectory generation to pass to simulator
 
+//          cout << "number of sensed vehicles: " << sensor_fusion.size() << " {";
 
+          /*-------------------
+           * Behavior Planning
+            -------------------*/
 
-
-
-
-          cout << "number of sensed vehicles: " << sensor_fusion.size() << " {";
+          bool too_close = false;
 
           // find ref_v to use
           for (int i=0; i<sensor_fusion.size(); i++)
@@ -212,52 +207,43 @@ int main() {
             {
               double vx = sensor_fusion[i][3];  // [m/s]?
               double vy = sensor_fusion[i][4];  // [m/s]?
-              double check_speed = sqrt(vx*vx+vy*vy); // [m/s]?  // Note: this only checks straight line in global coord, not aware of lane curves!!!
+              double check_speed = sqrt(vx*vx+vy*vy); // [m/s]  // Note: this only checks straight line in global coord, not aware of lane curves!!!
               double check_car_s = sensor_fusion[i][5]; // [m]?
 
-              check_car_s += ((double)prev_size* dt_ref*check_speed); // if using previous points can project s value outwards in time
+              check_car_s += ((double)prev_size* 0.02*check_speed); // if using previous points can project s value outwards in time
 
-              // check s values greater than mine and s gap
-              if ((check_car_s > car_s_future) && ((check_car_s - car_s_future) < 30)) // didn't account for track S-wrap-around
+              if (check_car_s > car_s_future) // car ahead of me?
               {
-                // Do some logic here, lower reference velocity so we don't crash into the car in front of us, could
-                // also flag to try to change lanes.
-//                ref_vel = 29.5; // [mph]
-                 too_close = true;
-                 if (lane > 0)
-                   lane = 0;
+                if ((check_car_s - car_s_future) < 30) // < 30m ahead? (didn't account for track S-wrap-around)
+                {
+                  ref_vel = ms2mph*check_speed; // [mph]
+                  cout << "speed limited: traffic speed = " << ref_vel << endl;
+  //                 too_close = true;
+                   if (lane > 0)
+                     lane -= 1;
+                }
               }
-              cout << "<" << ahead << sensor_fusion[i][0] << ">, ";
+//              cout << "<" << ahead << sensor_fusion[i][0] << ">, ";
             }
             else
             {
-              cout << " " << ahead << sensor_fusion[i][0] << " , ";
+//              cout << " " << ahead << sensor_fusion[i][0] << " , ";
             }
-
           }
-
-          cout << endl;
-
-
-          if (too_close)
-          {
-            ref_vel -= 0.224;
-          }
-          else if (ref_vel < 49.5)
-          {
-            ref_vel += 0.224;
-          }
-
-          ego.m_TrajGen.m_ref_vel = ref_vel*mph2ms;
-          ego.m_TrajGen.m_lane = lane;
+//          cout << endl;
 
           /*-----------------------
            * Trajectory Generation
             -----------------------*/
 
-          vector<vector<double>> traj_output = ego.m_TrajGen.getTrajectoryOutput();
-          vector<double> next_x_vals = traj_output[0];
-          vector<double> next_y_vals = traj_output[1];
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
+          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane, ref_vel*mph2ms, 10);
+          for (int i=0; i<output.size(); i++)
+          {
+            next_x_vals.push_back(output.at(i).x);
+            next_y_vals.push_back(output.at(i).y);
+          }
 
        // ---- Below are OUTPUTS ----
 
@@ -272,13 +258,20 @@ int main() {
           //this_thread::sleep_for(chrono::milliseconds(1000));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
-        }
-      } else {
+        } // if (event == "telemetry")
+        else
+          cout << event << endl;
+
+      } // if (s != "")...
+      else
+      {
         // Manual driving
         std::string msg = "42[\"manual\",{}]";
+        cout << "manual: " << endl;
+//        cout << "manual: " << j[1] << endl;
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
-    }
+    } // if "42" at start of socket data...
   });
 
   // We don't need this since we're not using HTTP but if it's removed the
