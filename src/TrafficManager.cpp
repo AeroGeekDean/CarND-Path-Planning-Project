@@ -26,7 +26,7 @@ TrafficManager::~TrafficManager()
 
 }
 
-void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
+void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
 {
   m_vehicles.clear(); // clear out past data
 
@@ -42,6 +42,7 @@ void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
       double vy = data[4];
       p.s =       data[5];
       p.d =       data[6];
+      p.lane = (int)(p.d/4); // each lane is 4m wide
       p.yaw =     atan2(vy, vx);
       p.spd =     magnitude(vx, vy);
 
@@ -55,16 +56,13 @@ void TrafficManager::updateTraffic(vector<vector<double>> traffic_in)
 
 void TrafficManager::predict()
 {
-  float time_horizon = 2.0; // predict 2.0 sec ahead in future
-  float dt_pred = 0.5;      // time step for prediction
-
   m_predictions.clear();
 
   // get all traffic vehicles to create prediction of itself into the future
   for (auto itr=m_vehicles.begin(); itr!=m_vehicles.end(); itr++ )
   {
     int id = itr->first;
-    vector<Pose> trajectory = itr->second.trajectoryPrediction(time_horizon, dt_pred);
+    vector<Pose> trajectory = itr->second.trajectoryPrediction(m_time_probe);
 
     m_predictions.insert( {id, trajectory} );
   }

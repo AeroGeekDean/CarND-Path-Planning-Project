@@ -45,21 +45,22 @@ int main() {
   uWS::Hub h;
 
   int lane = 1;
-  double ref_vel    = 49.0; // [mph]
-  double dt_ref     = 0.02; // [sec], or 50Hz
-  double accel_lim  = 5.0; // [m/s^2], rubic limit = 10.0
-  double jerk_lim   = 5.0; // [m/s^3], rubic limit = 10.0
+  float ref_vel    = 49.0; // [mph]
 
+  float dt_ref     = 0.02; // [sec], or 50Hz. frame rate used by simulator
+  float time_traj  = 1.0;  // [sec] look ahead time used to build vehicle trajectory for vehicle control
+  float time_probe = 3.0;  // [sec] Look-ahead time used for traffic prediction & ego planning
+
+  float accel_lim  = 5.0; // [m/s^2], rubic limit = 10.0
+  float jerk_lim   = 5.0; // [m/s^3], rubic limit = 10.0
+
+
+  // The max s value before wrapping around the track back to 0
+  double max_s = 6945.554;
 
   // create major components
+
   Track track;
-  TrafficManager traffic_mgr(track);
-  EgoVehicle ego(track);
-
-  ego.m_PathPlanner.m_dt = dt_ref;
-  ego.m_PathPlanner.accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
-  ego.m_PathPlanner.jerk_lim = jerk_lim*dt_ref;  // set jerk limit, as max delta-a per time step
-
   track.m_num_lanes_available = 3;
 
   // Waypoint map to read from
@@ -85,12 +86,20 @@ int main() {
   	track.map_waypoints_dy.push_back(d_y);
   }
   track.processWpts();
+  track.m_max_s = max_s;
+
+  TrafficManager traffic_mgr(track);
+  traffic_mgr.m_time_probe = time_probe;
+
+  EgoVehicle ego(track);
+  ego.m_PathPlanner.m_dt_ref = dt_ref;
+  ego.m_PathPlanner.m_time_traj = time_traj;
+  ego.m_PathPlanner.m_time_probe = time_probe;
+  ego.m_PathPlanner.accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
+  ego.m_PathPlanner.jerk_lim = jerk_lim*dt_ref;  // set jerk limit, as max delta-a per time step
 
   // 181 WPTs...
   cout << "Loaded file: '" << map_file_ << "' with " << track.m_num_wpts << " WPTs." << endl;
-
-  // The max s value before wrapping around the track back to 0
-  double max_s = 6945.554;
 
   h.onMessage([&track, &traffic_mgr, &ego, &ref_vel, &lane, &max_s]
                (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
@@ -159,9 +168,6 @@ int main() {
           traffic_mgr.updateTraffic(sensor_fusion);
           traffic_mgr.predict();
 
-          double car_s_future;
-          if (prev_size > 0)
-            car_s_future = end_path_s; // note: this will impact later code!!!
 
           /*------------------
            * Update Ego Data
@@ -190,6 +196,10 @@ int main() {
 
           bool too_close = false;
 
+          double car_s_future;
+          if (prev_size > 0)
+            car_s_future = end_path_s; // note: this will impact later code!!!
+
           // find ref_v to use
           for (int i=0; i<sensor_fusion.size(); i++)
           {
@@ -210,7 +220,7 @@ int main() {
               double check_speed = sqrt(vx*vx+vy*vy); // [m/s]  // Note: this only checks straight line in global coord, not aware of lane curves!!!
               double check_car_s = sensor_fusion[i][5]; // [m]?
 
-              check_car_s += ((double)prev_size* 0.02*check_speed); // if using previous points can project s value outwards in time
+              check_car_s += ((double)(prev_size*0.02)*check_speed); // if using previous points can project s value outwards in time
 
               if (check_car_s > car_s_future) // car ahead of me?
               {
@@ -238,7 +248,11 @@ int main() {
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
-          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane, ref_vel*mph2ms, 10);
+          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane,
+                                                                      ref_vel*mph2ms,
+                                                                      ego.m_PathPlanner.m_dt_ref,
+                                                                      1.0, // trajectory look ahead time
+                                                                      10); // # of prev path pts to re-use
           for (int i=0; i<output.size(); i++)
           {
             next_x_vals.push_back(output.at(i).x);

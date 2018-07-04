@@ -35,6 +35,7 @@ class Track {
 
   int m_num_wpts;
   int m_num_lanes_available;
+  float m_max_s;
 
  private:
 

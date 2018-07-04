@@ -24,11 +24,9 @@ class Vehicle {
     void updatePose(const Pose& p);
     const Pose& getPose() const { return m_pose; }
 
-    Pose propagatePose(float t);
-    Pose propagatePoseInertial(float t);
-    Pose propagatePoseFrenet(float t);
+    Pose propagatePose(const Pose& p_init, float t);
 
-    vector<Pose> trajectoryPrediction(float time_horizon=2.0, float dt=0.5);
+    vector<Pose> trajectoryPrediction(float time_horizon=2.0);
 
     int getLane() const { return m_lane; }
 
@@ -36,13 +34,13 @@ class Vehicle {
 
   protected:
 
+    Pose propagatePoseInertial(const Pose& p_init, float t);
+    Pose propagatePoseFrenet(const Pose& p_init, float t);
+
     Pose m_pose;
 
     int m_lane; // starting with far left lane = 0
     int lanes_available = 3;
-
-//    double m_vx;    // global velocity x-component, [m/s]
-//    double m_vy;    // global velocity y-component, [m/s]
 
     double m_yaw_ds; // frenet track angle, [rad] (+)???
     double m_a;     // acceleration

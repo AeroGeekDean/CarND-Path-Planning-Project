@@ -21,7 +21,6 @@ Track::Track()
 
 Track::~Track()
 {
-
 }
 
 void Track::processWpts()

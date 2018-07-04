@@ -21,9 +21,11 @@ class TrafficManager {
   TrafficManager(Track& trk);
   virtual ~TrafficManager();
 
-  void updateTraffic(vector<vector<double>> traffic_in);
+  void updateTraffic(const vector<vector<double>>& traffic_in);
 
   void predict();
+
+  float m_time_probe; // [sec], look ahead time horizon used to probe traffic trajectory
 
   map<int, Vehicle> m_vehicles;
 

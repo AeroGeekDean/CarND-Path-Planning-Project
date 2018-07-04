@@ -29,39 +29,48 @@ void Vehicle::updatePose(const Pose& p)
   m_lane = (int)(m_pose.d/lane_width);
 }
 
-Pose Vehicle::propagatePose(float t)
+Pose Vehicle::propagatePose(const Pose& p_init, float t)
 {
-  return propagatePoseFrenet(t);
-//  return propagatePoseInertial(t);
+  return propagatePoseFrenet(p_init, t);
+//  return propagatePoseInertial(p_init, t);
 }
 
 
-Pose Vehicle::propagatePoseFrenet(float t)
+Pose Vehicle::propagatePoseFrenet(const Pose& p_init, float t)
 {
+  /*
+   * Propagate the pose along Frenet coordinate system
+   * (assuming as if it's an inertial coord system)
+   * with no acceleration
+   */
   Pose p_new;
-    p_new.s = m_pose.s + m_pose.spd*t;
-    p_new.d = m_pose.d;
+    p_new.s = p_init.s + p_init.spd*t;
+    p_new.d = p_init.d;
+    p_new.lane = p_init.lane; // assume traffic stays in lane
     vector<double> xy = m_rTrack.getXY(p_new.s, p_new.d);
     p_new.x = xy[0];  // x
     p_new.y = xy[1];  // y
     p_new.yaw = xy[2];// yaw
-    p_new.spd = m_pose.spd;
+    p_new.spd = p_init.spd;
     p_new.vx = p_new.spd*cos(p_new.yaw);
-    p_new.vy = p_new.spd*cos(p_new.yaw);
+    p_new.vy = p_new.spd*sin(p_new.yaw);
 
     return p_new;
 }
 
-Pose Vehicle::propagatePoseInertial(float t)
+Pose Vehicle::propagatePoseInertial(const Pose& p_init, float t)
 {
+  /*
+   * Propagate the pose along Cartesian coordinate system with no acceleration
+   */
   Pose p_new;
-    p_new.x = m_pose.x + m_pose.vx*t;
-    p_new.y = m_pose.y + m_pose.vy*t;
-    p_new.vx = m_pose.vx; // currently, accel = 0
-    p_new.vy = m_pose.vy;
+    p_new.x = p_init.x + p_init.vx*t;
+    p_new.y = p_init.y + p_init.vy*t;
+    p_new.vx = p_init.vx; // currently, accel = 0
+    p_new.vy = p_init.vy;
 
-    p_new.yaw = atan2(m_pose.vy, m_pose.vx);
-    p_new.spd = m_pose.spd; //magnitude(m_pose.vx, m_pose.vy);
+    p_new.yaw = atan2(p_init.vy, p_init.vx);
+    p_new.spd = p_init.spd; //magnitude(p_init.vx, p_init.vy);
     vector<double> frenet = m_rTrack.getFrenet(p_new.x, p_new.y, p_new.yaw);
     p_new.s = frenet[0];
     p_new.d = frenet[1];
@@ -70,19 +79,22 @@ Pose Vehicle::propagatePoseInertial(float t)
 }
 
 
-vector<Pose> Vehicle::trajectoryPrediction(float time_horizon, float dt)
+vector<Pose> Vehicle::trajectoryPrediction(float time_horizon)
 {
+  /* NOTE: each traffic prediction trajectory consists of only 2 poses:
+   *      - current pose
+   *      - pose at (time_horizon) ahead in future
+   *      Ego vehicle's path planner only needs that much.
+   */
+
   vector<Pose> trajectory;
+  trajectory.push_back(m_pose);
 
-  for (float t=0.0; t<=time_horizon; t+=dt)
-  {
-    trajectory.push_back(propagatePose(t));
+  /* Add traffic lane change behavior prediction here later on, as needed.
+   * (check on traffic's velocity vector relative to the Frenet S axis to decide)
+   */
 
-    /* Question: Should we incremental fwd-in-time pose be computed from its prev pose?
-     *           Or just computed directly forward from current (time=0) pose?
-     *     Note: If accelerations are zero or constant, then the answers are same.
-     */
-  }
+  trajectory.push_back(propagatePose(m_pose, time_horizon));
 
   return trajectory;
 }
