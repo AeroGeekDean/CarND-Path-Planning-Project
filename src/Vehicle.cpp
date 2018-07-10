@@ -24,9 +24,14 @@ Vehicle::~Vehicle()
 void Vehicle::updatePose(const Pose& p)
 {
   m_pose = p;
+  float lane_width = 4.0;
+  m_pose.lane = (int)(m_pose.d/lane_width);
+  m_lane = m_pose.lane;
+}
 
-  double lane_width = 4.0;
-  m_lane = (int)(m_pose.d/lane_width);
+void Vehicle::updateState(const string& state_in)
+{
+  m_pose.state = state_in;
 }
 
 Pose Vehicle::propagatePose(const Pose& p_init, float t)
@@ -44,6 +49,7 @@ Pose Vehicle::propagatePoseFrenet(const Pose& p_init, float t)
    * with no acceleration
    */
   Pose p_new;
+    p_new.state = p_init.state;
     p_new.s = p_init.s + p_init.spd*t;
     p_new.d = p_init.d;
     p_new.lane = p_init.lane; // assume traffic stays in lane

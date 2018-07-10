@@ -26,7 +26,8 @@ class PathPlanner {
 
   virtual ~PathPlanner();
 
-  void updatePrevPath(vector<double> path_x, vector<double> path_y,
+  void updatePrevPath(const vector<double>& path_x,
+                      const vector<double>& path_y,
                       double end_s, double end_d);
 
   vector<Pose> chooseNextState(const map<int,vector<Pose>>& predictions );
@@ -41,7 +42,7 @@ class PathPlanner {
   float m_time_traj;  // [sec]
   float m_time_probe; // [sec]
   float m_ref_vel;    // [m/s]
-  int m_target_lane;  // current maneuver's target lane (could be diff from current lane when changing lane)
+  int   m_target_lane;// current maneuver's target lane (could be diff from current lane when changing lane)
   double accel_lim;   // [m/s] delta-velocity limit per time step
   double jerk_lim;    // [m/s^2] delta-accleration limit per time step
 
@@ -52,19 +53,24 @@ class PathPlanner {
   vector<Pose> generate_trajectory(string state,
                                    const map<int,vector<Pose>>& predictions);
 
+//  int get_id_vehicle_ahead(int lane, const map<int,vector<Pose>>& predictions);
+  bool is_vehicle_ahead(int lane,
+                        const map<int,vector<Pose>>& predictions,
+                        int& car_ahead_id);
+
 
   vector<Pose> constant_speed_trajectory();
   vector<Pose> keep_lane_trajectory(const map<int,vector<Pose>>& predictions);
-  vector<Pose> lane_change_trajectory(const string& state, const map<int,vector<Pose>>& predictions);
-  vector<Pose> prep_lane_change_trajectory(const string& state, const map<int,vector<Pose>>& predictions);
+  vector<Pose> lane_change_trajectory(const string& state,
+                                      const map<int,vector<Pose>>& predictions);
+  vector<Pose> prep_lane_change_trajectory(const string& state,
+                                           const map<int,vector<Pose>>& predictions);
 
   float calculate_cost(Pose pose,
                        const map<int,vector<Pose>>& predictions,
                        const vector<Pose>& trajectory);
 
-  string m_state;
-
-
+  string m_state = "START";
 
   // info on previous path, returned from simulator
   // used to build the control trajectory

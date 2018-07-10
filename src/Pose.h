@@ -15,7 +15,7 @@ struct Pose
   double yaw; // [rad] Cartesian coord, (+) from X-axis to Y-axis
   double spd; // [m/s]
   int    lane;// 0 is far left, each lane on right +1
-  string state; // change this to enum later
+  string state = "None"; // change this to enum later
 };
 
 #endif /* POSE_H_ */

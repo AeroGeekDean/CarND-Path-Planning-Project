@@ -24,6 +24,8 @@ class Vehicle {
     void updatePose(const Pose& p);
     const Pose& getPose() const { return m_pose; }
 
+    void updateState(const string& state_in);
+
     Pose propagatePose(const Pose& p_init, float t);
 
     vector<Pose> trajectoryPrediction(float time_horizon=2.0);

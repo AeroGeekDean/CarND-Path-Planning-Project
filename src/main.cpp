@@ -45,7 +45,7 @@ int main() {
   uWS::Hub h;
 
   int lane = 1;
-  float ref_vel    = 49.0; // [mph]
+  float ref_vel    = 49.0*mph2ms; // [mph]
 
   float dt_ref     = 0.02; // [sec], or 50Hz. frame rate used by simulator
   float time_traj  = 1.0;  // [sec] look ahead time used to build vehicle trajectory for vehicle control
@@ -95,6 +95,8 @@ int main() {
   ego.m_PathPlanner.m_dt_ref = dt_ref;
   ego.m_PathPlanner.m_time_traj = time_traj;
   ego.m_PathPlanner.m_time_probe = time_probe;
+  ego.m_PathPlanner.m_target_lane = lane;
+  ego.m_PathPlanner.m_ref_vel = ref_vel;
   ego.m_PathPlanner.accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
   ego.m_PathPlanner.jerk_lim = jerk_lim*dt_ref;  // set jerk limit, as max delta-a per time step
 
@@ -152,27 +154,23 @@ int main() {
           delta_t = duration_cast<duration<double>>( time_now - time_past ); // dt in [sec]
           double dt_actual = delta_t.count();
           time_past = time_now; // update past value
-          //          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
 
+//          cout << endl;
+//          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
 
        // ---- Above are INPUTS ----
 
-
-
-       // ======== main algorithm goes here ==========
+          // ======== main algorithm goes here ==========
 
           /*---------------------
            * Traffic Predictions
             ---------------------*/
-
           traffic_mgr.updateTraffic(sensor_fusion);
           traffic_mgr.predict();
-
 
           /*------------------
            * Update Ego Data
             -----------------*/
-
           Pose p;
             p.x = car_x;
             p.y = car_y;
@@ -181,78 +179,19 @@ int main() {
             p.yaw = deg2rad(car_yaw);
             p.spd = mph2ms*car_speed;
           ego.updatePose(p);
-
           ego.m_PathPlanner.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
-
-//          vector<Pose> traj_out = ego.m_PathPlanner.chooseNextState( traffic_mgr.m_predictions );
-
-//          ego.realizeNextState(); // this would be trajectory generation to pass to simulator
-
-//          cout << "number of sensed vehicles: " << sensor_fusion.size() << " {";
-
-          /*-------------------
-           * Behavior Planning
-            -------------------*/
-
-          bool too_close = false;
-
-          double car_s_future;
-          if (prev_size > 0)
-            car_s_future = end_path_s; // note: this will impact later code!!!
-
-          // find ref_v to use
-          for (int i=0; i<sensor_fusion.size(); i++)
-          {
-            string ahead;
-            double traffic_s = sensor_fusion[i][5];
-            double dist_ahead = traffic_s - car_s;
-            while (dist_ahead >   (max_s/2)) dist_ahead -= max_s; // constraint to -(max_s/2) < X <= (max_s/2)
-            while (dist_ahead <= -(max_s/2)) dist_ahead += max_s;
-            if (dist_ahead > 0) ahead = "*";
-            else                ahead = "_";
-
-            // is car in my lane?
-            float d = sensor_fusion[i][6]; // [m]?
-            if ((2+4*lane -2) < d && d < (2+4*lane +2))
-            {
-              double vx = sensor_fusion[i][3];  // [m/s]?
-              double vy = sensor_fusion[i][4];  // [m/s]?
-              double check_speed = sqrt(vx*vx+vy*vy); // [m/s]  // Note: this only checks straight line in global coord, not aware of lane curves!!!
-              double check_car_s = sensor_fusion[i][5]; // [m]?
-
-              check_car_s += ((double)(prev_size*0.02)*check_speed); // if using previous points can project s value outwards in time
-
-              if (check_car_s > car_s_future) // car ahead of me?
-              {
-                if ((check_car_s - car_s_future) < 30) // < 30m ahead? (didn't account for track S-wrap-around)
-                {
-                  ref_vel = ms2mph*check_speed; // [mph]
-                  cout << "speed limited: traffic speed = " << ref_vel << endl;
-  //                 too_close = true;
-                   if (lane > 0)
-                     lane -= 1;
-                }
-              }
-//              cout << "<" << ahead << sensor_fusion[i][0] << ">, ";
-            }
-            else
-            {
-//              cout << " " << ahead << sensor_fusion[i][0] << " , ";
-            }
-          }
-//          cout << endl;
-
-          /*-----------------------
-           * Trajectory Generation
-            -----------------------*/
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
-          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane,
-                                                                      ref_vel*mph2ms,
-                                                                      ego.m_PathPlanner.m_dt_ref,
-                                                                      1.0, // trajectory look ahead time
-                                                                      10); // # of prev path pts to re-use
+
+          vector<Pose> output = ego.m_PathPlanner.chooseNextState( traffic_mgr.m_predictions );
+
+//          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane,
+//                                                                      ref_vel,
+//                                                                      ego.m_PathPlanner.m_dt_ref,
+//                                                                      ego.m_PathPlanner.m_time_traj, // trajectory look ahead time
+//                                                                      10); // # of prev path pts to re-use
+
           for (int i=0; i<output.size(); i++)
           {
             next_x_vals.push_back(output.at(i).x);
