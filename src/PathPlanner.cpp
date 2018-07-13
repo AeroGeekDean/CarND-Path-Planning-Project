@@ -6,13 +6,11 @@
  */
 
 #include "PathPlanner.h"
-
-#include <iostream>
-#include <iomanip>
 #include "EgoVehicle.h"
-#include "PathPlanner.h"
 #include "UtilFunctions.h"
 #include "spline.h"
+#include <iostream>
+#include <iomanip>
 
 using std::cout;
 using std::endl;
@@ -35,15 +33,17 @@ void PathPlanner::updatePrevPath(const vector<double>& path_x,
                                  const vector<double>& path_y,
                                  double end_s,
                                  double end_d) {
-  m_prev_path_x = path_x;
-  m_prev_path_y = path_y;
-  m_prev_path_size = path_x.size();
+  m_prev_path_x     = path_x;
+  m_prev_path_y     = path_y;
+  m_prev_path_size  = path_x.size();
 
-  if (m_prev_path_size==0) {
-    // these are undefined/zero when there's is no prev path (simulator 1st frame)
+  if (m_prev_path_size==0)
+  { // these are undefined/zero when there's is no prev path (simulator 1st frame)
     m_end_path_s = m_rEgo.getPose().s;
     m_end_path_d = m_rEgo.getPose().d;
-  }else{
+  }
+  else
+  {
     m_end_path_s = end_s;
     m_end_path_d = end_d;
   }
@@ -52,7 +52,7 @@ void PathPlanner::updatePrevPath(const vector<double>& path_x,
 /*-----------------------
  * getTrajectoryOutput()
   -----------------------*/
-vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_in, float traj_time, int num_pp_pts)
+vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float v_in, float dt_in, float traj_time, int num_pp_pts)
 {
   /*
    * Create a set of widely spaced (x,y) 5 waypoints. The first 2 pts defines the starting
@@ -86,6 +86,7 @@ vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_
   double ref_s;
   double ref_yaw;
   double ref_spd;
+//  double ref_accel;
 
   if (ref_ppath_size < 3)  // if not sufficient points, use the car as starting reference
   {
@@ -94,6 +95,7 @@ vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_
     ref_s   = m_rEgo.getPose().s;
     ref_yaw = m_rEgo.getPose().yaw;
     ref_spd = m_rEgo.getPose().spd;
+//    ref_accel = 0.0;
 
     // find another point slight behind the car, to force the spline tangent to the car
     double prev_car_x = ref_x - cos(ref_yaw);
@@ -115,7 +117,12 @@ vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_
 
     ref_yaw   = atan2( (ref_y-ref_y_prev), (ref_x-ref_x_prev) );
     double dist = distance(ref_x, ref_y, ref_x_prev, ref_y_prev);
-    ref_spd   = dist/m_dt_ref;  // previous path was built using dt_ref
+    ref_spd   = dist/dt_in;  // previous path was built using dt_ref
+
+//    double ref_x_pprev = m_prev_path_x[ref_ppath_size-3];
+//    double ref_y_pprev = m_prev_path_y[ref_ppath_size-3];
+//    double dist2 = distance(ref_x_prev, ref_y_prev, ref_x_pprev, ref_y_pprev);
+//    ref_accel = (ref_spd - dist2/dt_in)/dt_in;
 
     vector<double> tmp = m_rEgo.m_rTrack.getFrenet(ref_x, ref_y, ref_yaw);
     ref_s = tmp[0];
@@ -154,8 +161,8 @@ vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_
   }
 
   // create and set (x,y) points to a spline
-  tk::spline s;
-  s.set_points(ptsx, ptsy);
+  tk::spline s_curve;
+  s_curve.set_points(ptsx, ptsy);
 
   // output container
   vector<Pose>   trajectory;
@@ -169,63 +176,130 @@ vector<Pose> PathPlanner::getTrajectoryOutput(int lane, float vref_in, float dt_
     trajectory.push_back(p);
   }
 
-  /*
-   * Since our given speed is in S direction, we need to do a little bit of trigonometry
-   * to find our step size in the local X direction. They are aligned right at the vehicle,
-   * but will diverge as the trajectory curves. We'll use the previous step slope to predict.
-   * each future step slope. We'll also use Trig Identity equation to calc `cosine_ratio` below,
-   * so as to avoid trig functions which are computationally costly.
+
+  /* --- SPEED CONTROLLER ---
+   *
+   *  I tried to implement a 2nd order lag filter, like in the block diagram below.
+   *  And choosing the gains (gain_a, gain_j) judicially using engineering judgment.
+   *
+   *          V_err         A_cmd   A_err          Jerk      Accel
+   * Vin --->o----->[gain_a]----->o------>[gain_j]---->[1/S]--+--->[1/S]--+--> Vout
+   *     (+) ^                (+) ^                           |           |
+   *         |(-)                 |(-)   Accel_feedback       |           |
+   *         |                    +---------------------------+           |
+   *         |    Velocity_feedback                                       |
+   *         +------------------------------------------------------------+
+   *
+   *  The associated 2nd order transfer function (Laplace transform):
+   *
+   *    Vout/Vin = (gain_a*gain_j) / ( S^2 + gain_j*S + gain_a*gain_j )
+   *
+   *  where:
+   *    Omega_n (natural frequency) = sqrt( gain_a*gain_j )
+   *    zeta (damping ratio) = 0.5 * gain_j / Omega_n
+   *
+   *  Thus with:
+   *    gain_a = 0.403 [1/sec],       gain_j = 0.9 [1/sec]     (set above...)
+   *
+   *  The filter dynamics are:
+   *    Omega_n = 0.602 [rad/sec],    zeta = 0.747 <--- under-damped, oscillatory!!!
+   *
+   *  However, I was having trouble debugging out the long-period speed oscillation and ending
+   *  up spending too much time on controller design, instead of project path planning design.
+   *
+   *  Thus abandoning this approach, for now.
+   *
+   *  I instead IMPLEMENT A MUCH SIMPLER "LIMITED ACCELERATION SPEED CONTROLLER" below.
+   *
+   *  By limiting the max acceleration to 5.0 [m/s^2], and implemented it as a
+   *  max-speed-change-per-frame (m_dv_accel_lim) of 5.0*dt = 5.0*0.02 = 0.1 [m/s].
+   *  This yields a max jerk of only 2.5 [m/s^3] for a large step speed input...
+   *  ONLY when a large step speed input is immediately followed by a large step in opposite direction,
+   *  does the max jerk reach 10.0 [m/s^3].
+   *
+   *  ---- below are variables associated with the orig design.
+   *          Preserving, so I can come back to them later. ---
    */
 
-//  double v_prev = ref_spd;
-//  double a_prev = ref_accel;
-//  double a_tgt_dt, j_tgt_dt; // accel & jerk target, per frame
+//  double a_prev = ref_accel;  // acceleration at the end of previous path points
+  double v_prev = ref_spd;      // velocity at the end of previous path points
+
+  /* SPEED CONTROLLER gain_a (below) is chosen this way. Given that:
+   * - Estimated max step delta velocity command is 50 [mph] = 22.35 [m/s],
+   * - accel_lim = 10 m/s^2 -> allow 90% of that
+   * - hence: 9/22.35 = 0.403
+   */
+//  float gain_a = 0.403; // accel_cmd per velocity_error, [1/sec],
+
+    /* Similarly, SPEED CONTROLLER gain_j (below) is chosen by... Given that:
+     * - max accel = 10.0 [m/s^2],
+     * - jerk_lim = 10 m/s^3 -> allow 90% of that
+     * - hence: 9/10 = 0.9
+     */
+//  float gain_j = 0.9;   // jerk_cmd per acceleration_error, [1/sec], j_lim = 10 m/s^3 -> use 9.0, 9/10 = 0.9
+//  double j;
+
+  double dv;  // delta_speed per frame
   double ds, y, slope;
   double x = 0.0;
-  double cosine_ratio = 1.0; // cosine of slope angle, angle = atan(slope).
-  double x_prev = 0.0;
+  double x_prev = 0.0; // origin of body axis
   double y_prev = 0.0;
 
-  cout << std::fixed << std::setprecision(2);
+  /* CONVERSION OF SPEED & X_STEP, FROM FRENET-S DIRECTION TO BODY-X DIRECTION....
+   * Since our given speed is in S direction, we need to do a little bit of trigonometry
+   * to find our step size in the local X direction. S & X are co-aligned right near the vehicle,
+   * but will diverge as the trajectory forward curves & bends. We'll use the previous step 'slope'
+   * to predict each future step 'slope'. Furthermore, We'll also use Trigonometry Identity equation
+   * to calculate `cosine_ratio` below, so as to avoid using the computationally costly trigonometry
+   * functions.
+   */
+  double cosine_ratio = 1.0; // cosine of slope angle, angle = atan(slope) = atan(dy/dx)
 
-  int steps = max( (num_steps-ref_ppath_size), 0);
+  int steps = max( (num_steps-ref_ppath_size), 0); // remaining # of trajectory points to build
+
   for (int i=0; i<steps; i++)
   {
-    /* --- SPEED CONTROLLER (currently not working yet) ---
-     * Compute allowable speed for this step, subject to accel & jerk limits
-     * This means vref_in could have discontinuous big jumps, since the actual speed is protected.
-     *
-     * Need to implement a 2nd order filter, with known:
-     * -   x0: speed, ref pt speed
-     * -  xd0: accel, ref pt accel
-     * - xdd0: jerk, ref pt jerk assume zero
-     */
-//    a_tgt_dt = min(max((vref_in - v_prev), -accel_lim), accel_lim);
-//    j_tgt_dt = min(max((a_tgt_dt - a_prev*dt_in), -jerk_lim), jerk_lim);
-//    cout << a_tgt_dt << ", ";
-//    a_prev += j_tgt_dt;
-//    v_prev += a_prev * dt_in;
-//    v_prev = min(v_prev, 49.5*mph2ms);
+//--- These are the 2nd order lag filter speed controller code ---
+//    Saving them here so I can come back to them in the future.
+//
+//    j = gain_j*(gain_a*(vref_in - v_prev) - a_prev);
+//    a_prev += j*dt_in;
+//    v_prev += a_prev*dt_in;
+//    v_prev = min((v_prev + a_prev*dt_in), (double)m_ref_vel);
 
-    ds = vref_in * dt_in;
+    // rate limit how much delta_v is permitted per frame (hence acceleration limiting)
+    dv = max(min((v_in - v_prev), m_dv_accel_lim), -m_dv_accel_lim);
+    v_prev += dv;
+
+    ds = v_prev * dt_in;
     x += cosine_ratio*ds;  // to find dx based on yaw
-    y = s(x);
+    y = s_curve(x);
 
-    float spd_debug = distance(x,y,x_prev,y_prev)/dt_in;
-//    cout << "(" << x << ", "<< y << ", " << spd_debug << "), ";
-    vector<double> out = local2global(x, y, ref_x, ref_y, (ref_yaw));
+    vector<double> out = local2global(x, y, ref_x, ref_y, ref_yaw);
     Pose p;
       p.x = out[0];
       p.y = out[1];
     trajectory.push_back(p);
 
-//    cosine_ratio = cos( atan2((y_point-y_point_prev), (x_point-x_point_prev)) );
+/*  Actual cosine_ratio = cos( atan2((y_point-y_point_prev), (x_point-x_point_prev)) );
+ *  Below is simpler formula using trig identities
+ */
     slope = (y-y_prev)/(x-x_prev);
     cosine_ratio = 1/sqrt(1+slope*slope);  // find new value
+
+    // save previous values
     x_prev = x;
     y_prev = y;
   }
-//  cout << endl;
+
+//  cout << "TrajCalc_v: [";
+//  double xp = 0, yp = 0;
+//  for (auto p : trajectory) {
+//    cout << distance(p.x, p.y, xp, yp)/m_dt_ref << ", ";
+//    xp=p.x; yp=p.y;
+//  }
+//  cout << "]" << endl;
+
   return trajectory;
 }
 
@@ -259,7 +333,7 @@ vector<Pose> PathPlanner::chooseNextState(const map<int,vector<Pose>>& predictio
 
   // Generate trajectory associated with each state, then calculate their associated cost.
 
-  vector<string> states = possibleSuccessorStates();
+  vector<FSM_state> states = possibleSuccessorStates();
 
   vector<float> costs;
 
@@ -285,12 +359,12 @@ vector<Pose> PathPlanner::chooseNextState(const map<int,vector<Pose>>& predictio
   m_state = p.state; // update PathPlanner FSM's state
   m_target_lane = p.lane;
 
-  cout << "State = " << m_state << "[" << m_target_lane << "]: ";
+  cout << "Spd: " << p.spd << ", S: " << p.s << ", State: " << m_state << "[" << m_target_lane << "]: ";
   for (int i=0; i<costs.size(); i++) {
     if (i==best_idx)
-      cout << trajectories.at(i).back().state << "<" << (costs.at(i)-*best_cost) << ">, ";
-    else
       cout << trajectories.at(i).back().state << "(" << (costs.at(i)-*best_cost) << "), ";
+    else
+      cout << trajectories.at(i).back().state << " " << (costs.at(i)-*best_cost) << " , ";
   } cout << endl;
   cout<<endl;
 
@@ -307,59 +381,63 @@ float PathPlanner::calculate_cost(Pose pose,
                                   const vector<Pose>& trajectory)
 {
   float cost = 1;
-
-  cost = m_rEgo.m_rTrack.m_max_s - trajectory.back().s;
-
-//  if (trajectory.back().state == "KL")
-//    cost = 0;
-  // TODO
+  float dist_fwd = s_wrap(trajectory.back().s - pose.s);
+  cost = -dist_fwd;
   return cost;
 }
 
 /*---------------------------
  * possibleSuccessorStates()
   ---------------------------*/
-vector<string> PathPlanner::possibleSuccessorStates()
+vector<FSM_state> PathPlanner::possibleSuccessorStates()
 {
   /*
   Provides the possible next states given the current state for the FSM
   discussed in the course, with the exception that lane changes happen
   instantaneously, so LCL and LCR can only transition back to KL.
   */
-  vector<string> states;
-  states.push_back("KL"); // KL is always a viable state
+  vector<FSM_state> states;
+  states.push_back(kFSM_KL); // KL is always a viable state
 
-  string state = m_state;
+  FSM_state state = m_state;
 //  string state = m_rEgo.getPose().state;
-  if(state.compare("KL") == 0)
+  switch (m_state)
   {
-      states.push_back("PLCL");
-      states.push_back("PLCR");
-  }
-  else if (state.compare("PLCL") == 0)
-  {
+    case kFSM_KL:
+      if (m_target_lane != 0) // not in far left lane
+        states.push_back(kFSM_PLCL);
+      if (m_target_lane != m_rEgo.m_rTrack.m_num_lanes_available-1) // not in far right lane
+        states.push_back(kFSM_PLCR);
+      break;
+
+    case kFSM_PLCL:
       if (m_target_lane != 0) // not in far left lane
       {
-          states.push_back("PLCL");
-          states.push_back("LCL");
+        states.push_back(kFSM_PLCL);
+        states.push_back(kFSM_LCL);
       }
-  }
-  else if (state.compare("PLCR") == 0)
-  {
+      break;
+
+    case kFSM_PLCR:
       if (m_target_lane != m_rEgo.m_rTrack.m_num_lanes_available-1) // not in far right lane
       {
-          states.push_back("PLCR");
-          states.push_back("LCR");
+        states.push_back(kFSM_PLCR);
+        states.push_back(kFSM_LCR);
       }
+      break;
+
+    default:
+      //If state is "LCL" or "LCR", then just return "KL"
+      break;
   }
-  //If state is "LCL" or "LCR", then just return "KL"
+
   return states;
 }
 
 /*-----------------------
  * generate_trajectory()
   -----------------------*/
-vector<Pose> PathPlanner::generate_trajectory(string state, const map<int,vector<Pose>>& predictions)
+vector<Pose> PathPlanner::generate_trajectory(FSM_state state, const map<int,vector<Pose>>& predictions)
 {
   /*
   Given a possible next state, generate the appropriate trajectory to realize the next state.
@@ -367,22 +445,30 @@ vector<Pose> PathPlanner::generate_trajectory(string state, const map<int,vector
 
   vector<Pose> trajectory;
 
-  if (state.compare("CS") == 0)
+  switch (state)
   {
+    case kFSM_CS:
       trajectory = constant_speed_trajectory();  // for traffic vehicle only
-  }
-  else if (state.compare("KL") == 0)
-  {
+      break;
+
+    case kFSM_KL:
       trajectory = keep_lane_trajectory(predictions);
-  }
-  else if (state.compare("LCL") == 0 || state.compare("LCR") == 0)
-  {
+      break;
+
+    case kFSM_LCL:
+    case kFSM_LCR:
       trajectory = lane_change_trajectory(state, predictions);
-  }
-  else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0)
-  {
+      break;
+
+    case kFSM_PLCL:
+    case kFSM_PLCR:
       trajectory = prep_lane_change_trajectory(state, predictions);
+      break;
+
+    default:
+      break;
   }
+
   return trajectory;
 }
 
@@ -393,7 +479,7 @@ vector<Pose> PathPlanner::constant_speed_trajectory()
 {
   // Continue on ego's current lane and speed
   Pose ego_now = m_rEgo.getPose();
-  ego_now.state = "CS";
+  ego_now.state = kFSM_CS;
 
   return {m_rEgo.getPose(), m_rEgo.propagatePose(ego_now, m_time_probe)};
 }
@@ -413,7 +499,7 @@ vector<Pose> PathPlanner::keep_lane_trajectory(const map<int,vector<Pose>>& pred
   int id_car_ahead;
 
   Pose ego_now = m_rEgo.getPose();
-  ego_now.state = "KL";
+  ego_now.state = kFSM_KL;
   ego_now.lane = m_target_lane; // follow last target lane, as ego might be in maneuver transient
 
   Pose ego_future;
@@ -425,19 +511,20 @@ vector<Pose> PathPlanner::keep_lane_trajectory(const map<int,vector<Pose>>& pred
     const Pose& car_ahead = predictions.at(id_car_ahead).back(); // grab future pose
     ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
 
-    if ( (car_ahead.s-ego_future.s) < 30) // closer than 30m, let's slow to match speed
+    if ( s_wrap2(car_ahead.s-ego_future.s) < m_buffer_distance) // closer than buffer, let's slow to match speed
     {
       // back calc spd needed to reach desired s...
-      float ego_future_desired_s = car_ahead.s - 30;
+      float ego_future_desired_s = s_wrap(car_ahead.s-m_buffer_distance);
       Pose ego_tmp = ego_now;
-      ego_tmp.spd = (ego_future_desired_s-ego_tmp.s)/m_time_probe;
+      ego_tmp.spd = min(s_wrap2(ego_future_desired_s-ego_tmp.s)/m_time_probe, ego_tmp.spd);
       ego_future = m_rEgo.propagatePose(ego_tmp, m_time_probe);
+
       ego_future.spd = car_ahead.spd;
-      cout << "KL::car ahead too close! New speed = " << ego_future.spd << endl;
+//cout << "KL - car ahead too close! New speed = " << ego_future.spd << endl;
     }
     else // car ahead is still far away, maintain speed and keep on trucking on!
     {
-//      cout << "car ahead still far!" << endl;
+//cout << "KL - car ahead still far!" << endl;
       ego_now.spd = m_ref_vel;
       ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
     }
@@ -445,7 +532,7 @@ vector<Pose> PathPlanner::keep_lane_trajectory(const map<int,vector<Pose>>& pred
   else
   { // no cars ahead, keep on going at ref_vel !
     ego_now.spd = m_ref_vel;
-    //    cout << "lane empty! ego_now.spd = " << ego_now.spd << endl;
+//cout << "KL - lane empty!" << endl;
     ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
   }
 
@@ -453,19 +540,91 @@ vector<Pose> PathPlanner::keep_lane_trajectory(const map<int,vector<Pose>>& pred
 
 }
 
+
+/*-------------------------------
+ * prep_lane_change_trajectory()
+  -------------------------------*/
+vector<Pose> PathPlanner::prep_lane_change_trajectory(const FSM_state& state, const map<int,vector<Pose>>& predictions)
+{
+  int new_lane = m_target_lane;
+  if (state==kFSM_PLCR)
+    new_lane += 1;
+  else if (state==kFSM_PLCL)
+    new_lane -= 1;
+
+  int id_car_ahead;
+
+  const vector<Pose>& kl_data = keep_lane_trajectory(predictions);
+  const Pose& ego_now_kl = kl_data.front();
+  const Pose& ego_future_kl = kl_data.back();
+
+  Pose ego_now = m_rEgo.getPose();
+  ego_now.state = state;
+  ego_now.lane = m_target_lane; // follow last target lane, as ego might be in maneuver transient
+
+  Pose ego_future;
+
+  // First, find the car that is ahead of us in new lane, if any
+  if (is_vehicle_ahead(new_lane, predictions, id_car_ahead))
+  {
+    // let's evaluate predictions in the future...
+    const Pose& car_ahead = predictions.at(id_car_ahead).back(); // grab future pose
+    ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
+
+    if ( s_wrap2(car_ahead.s-ego_future.s) < m_buffer_distance) // closer than buffer, let's slow to match speed and find s
+    {
+      // back calc spd needed to reach desired s...
+      float ego_future_desired_s = s_wrap(car_ahead.s - m_buffer_distance);
+      Pose ego_tmp = ego_now;
+      float spd_calc = s_wrap2(ego_future_desired_s-ego_tmp.s)/m_time_probe;
+      float spd_old = ego_tmp.spd;
+      ego_tmp.spd = min(spd_calc, spd_old);
+      ego_future = m_rEgo.propagatePose(ego_tmp, m_time_probe); // with appropriate s reflecting new lane
+
+cout << state << "(" << m_target_lane << ":" << new_lane << ")::New lane traffic speed = " << ego_future.spd
+//     << ", (" << spd_calc << ", " << spd_old << ")"
+//     << " (" << ego_future_desired_s << ", " << ego_future.s << ", " << ego_future_kl.s << ")"
+//     << " [KLnow: (" << ego_now_kl.s << ", " << ego_now_kl.spd << "), future("
+//                     << ego_future_kl.s << ", " << ego_future_kl.spd << ")] [PLCnow: ("
+//                     << ego_tmp.s << ", " << ego_tmp.spd << "), future("
+//                     << ego_future.s << ", " << ego_future.spd << ")]"
+     << endl;
+    }
+    else // car ahead in new lane is still far away, use ref speed to calc distance
+    {
+//cout << state << " - car ahead still far!" << endl;
+      ego_now.spd = m_ref_vel;
+      ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
+    }
+  }
+  else
+  { // no cars ahead in new lane, use ref speed to calc distance
+    ego_now.spd = m_ref_vel;
+//cout << state << " - lane empty!" << endl;
+    ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
+  }
+
+  // BUT while in PLCx mode, ego_future still need to follow car ahead (in own lane) speed!!!
+  ego_future.spd = ego_future_kl.spd;
+
+  return {ego_now, ego_future};
+}
+
+
 /*--------------------------
  * lane_change_trajectory()
   --------------------------*/
-vector<Pose> PathPlanner::lane_change_trajectory(const string& state, const map<int,vector<Pose>>& predictions)
+vector<Pose> PathPlanner::lane_change_trajectory(const FSM_state& state, const map<int,vector<Pose>>& predictions)
 {
   int new_lane = m_target_lane;
-  if (state=="LCR")
+  if (state==kFSM_LCR)
     new_lane += 1;
-  else if (state=="LCL")
+  else if (state==kFSM_LCL)
     new_lane -= 1;
 
   vector<Pose> trajectory;
   Pose ego_now = m_rEgo.getPose();
+  float spd_now = ego_now.spd;
   Pose ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
 
   //Check if a lane change is possible (traffic occupying spot).
@@ -473,7 +632,9 @@ vector<Pose> PathPlanner::lane_change_trajectory(const string& state, const map<
   {
     // check if traffic is CURRENTLY next to ego in the new lane (assume 5m car length)
     const Pose& traffic_now = itr->second.front(); // current pose
-    if ((traffic_now.lane==new_lane) && (fabs(traffic_now.s-ego_now.s) < 5.0))
+
+    if ((traffic_now.lane==new_lane) &&
+        (fabs(s_wrap2(traffic_now.s-ego_now.s)) < 5.0)) // overlap check
     {
       cout << state << " CAN'T: traffic blocking NOW!" << endl;
       return trajectory; // can't change lane, return empty trajectory
@@ -483,7 +644,9 @@ vector<Pose> PathPlanner::lane_change_trajectory(const string& state, const map<
       // Once traffic lane change prediction is implemented,
       // this will catch traffic moving into our new lane
     const Pose& traffic_future = itr->second.back(); // future pose
-    if ((traffic_future.lane==new_lane) && (fabs(traffic_future.s-ego_future.s) < 5.0))
+
+    if ((traffic_future.lane==new_lane) &&
+        (fabs(s_wrap2(traffic_future.s-ego_future.s)) < 5.0))
     {
       cout << state << " CAN'T: traffic blocking FUTURE!" << endl;
       return trajectory; // can't change lane yet, return an empty trajectory
@@ -497,62 +660,12 @@ vector<Pose> PathPlanner::lane_change_trajectory(const string& state, const map<
   // lane change IS possible
   ego_now.lane = m_target_lane;
   ego_now.state = state;
+  ego_now.spd = m_ref_vel+1; // use ref spd to calc new ego_future's S (+1 to make more attractive than PCLx)
 
+  ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
   ego_future.lane = new_lane;
   ego_future.state = state;
-  return {ego_now, ego_future};
-}
-
-/*-------------------------------
- * prep_lane_change_trajectory()
-  -------------------------------*/
-vector<Pose> PathPlanner::prep_lane_change_trajectory(const string& state, const map<int,vector<Pose>>& predictions)
-{
-  int new_lane = m_target_lane;
-  if (state=="PLCR")
-    new_lane += 1;
-  else if (state=="PLCL")
-    new_lane -= 1;
-
-  int id_car_ahead;
-
-  Pose ego_now = m_rEgo.getPose();
-  ego_now.state = state;
-  ego_now.lane = m_target_lane; // follow last target lane, as ego might be in maneuver transient
-
-  Pose ego_future;
-
-  // First, find the car that is ahead of us, if any
-  if (is_vehicle_ahead(new_lane, predictions, id_car_ahead))
-  {
-    // let's evaluate predictions in the future...
-    const Pose& car_ahead = predictions.at(id_car_ahead).back(); // grab future pose
-    ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
-
-    if ( (car_ahead.s-ego_future.s) < 30) // closer than 30m, let's slow to match speed
-    {
-      // back calc spd needed to reach desired s...
-      float ego_future_desired_s = car_ahead.s - 30;
-      Pose ego_tmp = ego_now;
-      ego_tmp.spd = min((ego_future_desired_s-ego_tmp.s)/m_time_probe, ego_tmp.spd);
-      ego_future = m_rEgo.propagatePose(ego_tmp, m_time_probe);
-      ego_future.spd = car_ahead.spd;
-      cout << state << "(" << m_target_lane << ":" << new_lane << ")::New lane speed = " << ego_future.spd << endl;
-    }
-    else // car ahead is still far away, maintain speed and keep on trucking on!
-    {
-//      cout << "car ahead still far!" << endl;
-      ego_now.spd = m_ref_vel;
-      ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
-    }
-  }
-  else
-  { // no cars ahead, keep on going at ref_vel !
-    ego_now.spd = m_ref_vel;
-    //    cout << "lane empty! ego_now.spd = " << ego_now.spd << endl;
-    ego_future = m_rEgo.propagatePose(ego_now, m_time_probe);
-  }
-
+  ego_future.spd = spd_now; // but keep current spd until after lane change.
   return {ego_now, ego_future};
 }
 
@@ -574,10 +687,7 @@ bool PathPlanner::is_vehicle_ahead(int lane, const map<int,vector<Pose>>& predic
     if (traffic.lane == lane) // filter by lane
     {
       float traffic_s = traffic.s;
-      float dist_ahead = traffic.s - m_rEgo.getPose().s;
-        // protect around start/finish line when s wraps back to zero
-        while (dist_ahead >   (max_s/2)) dist_ahead -= max_s;
-        while (dist_ahead <= -(max_s/2)) dist_ahead += max_s;
+      float dist_ahead = s_wrap2(traffic.s-m_rEgo.getPose().s);
 
       // look for the car directly ahead of us
       if ((dist_ahead > 0) && (dist_ahead < closest_dist_ahead))

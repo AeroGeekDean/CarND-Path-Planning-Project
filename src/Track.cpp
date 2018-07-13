@@ -108,14 +108,15 @@ vector<double> Track::getFrenet(double x, double y, double theta)
   // Sarrus's Rule for the k-axis (vector 'n' cross-product vector 'X')
   double frenet_d = x_x*n_y - x_y*n_x;  // positive (+) to RIGHT of centerline path
 
-  // calculate s value along this leg length
-  double frenet_s = x_x*n_x + x_y*n_y; // 'X' dot-product with unit-vector 'n'
+  // calculate S value as that of prev_wp + S along this leg length
+  double frenet_s = map_waypoints_s[prev_wp]
+                  + (x_x*n_x + x_y*n_y); // 'X' dot-product with unit-vector 'n'
 
-  for(int i=0; i<prev_wp; i++)  {
-    // now add all prior leg lengths
-    frenet_s += distance(map_waypoints_x[i], map_waypoints_y[i],
-                         map_waypoints_x[i+1], map_waypoints_y[i+1]);
-  }
+//  for(int i=0; i<prev_wp; i++)  {
+//    // now add all prior leg lengths
+//    frenet_s += distance(map_waypoints_x[i], map_waypoints_y[i],
+//                         map_waypoints_x[i+1], map_waypoints_y[i+1]);
+//  }
 
   return {frenet_s,frenet_d};
 }
@@ -128,20 +129,23 @@ vector<double> Track::getXY(double s, double d)
 {
   int prev_wp = -1;
 
-  while(s >= map_waypoints_s[prev_wp+1] && (prev_wp < (int)(m_num_wpts-1) )) // protect for case of s=0.0
+  s = s_wrap(s); // make sure S is within max_s bounds
+
+  while( (s >= map_waypoints_s[prev_wp+1]) && // find the correct prev_wp
+         (prev_wp < (m_num_wpts-1)) ) // s is after the last wp
   {
     prev_wp++;
   }
 
-  int wp2 = (prev_wp+1)%m_num_wpts;
+  int next_wp = (prev_wp+1)%m_num_wpts;
 
-  double heading = atan2((map_waypoints_y[wp2]-map_waypoints_y[prev_wp]),
-                         (map_waypoints_x[wp2]-map_waypoints_x[prev_wp]));
+  double heading = atan2((map_waypoints_y[next_wp]-map_waypoints_y[prev_wp]),
+                         (map_waypoints_x[next_wp]-map_waypoints_x[prev_wp]));
 
   // the x,y,s along the segment
-  double seg_s = (s-map_waypoints_s[prev_wp]);
-  double seg_x = map_waypoints_x[prev_wp]+seg_s*cos(heading);
-  double seg_y = map_waypoints_y[prev_wp]+seg_s*sin(heading);
+  double seg_s = (s - map_waypoints_s[prev_wp]);
+  double seg_x = map_waypoints_x[prev_wp] + seg_s*cos(heading);
+  double seg_y = map_waypoints_y[prev_wp] + seg_s*sin(heading);
 
   double perp_heading = heading-pi()/2;
 

@@ -24,28 +24,18 @@ class Vehicle {
     void updatePose(const Pose& p);
     const Pose& getPose() const { return m_pose; }
 
-    void updateState(const string& state_in);
-
-    Pose propagatePose(const Pose& p_init, float t);
+    Pose propagatePose(const Pose& p_in, float t);
 
     vector<Pose> trajectoryPrediction(float time_horizon=2.0);
-
-    int getLane() const { return m_lane; }
 
     Track& m_rTrack;  // reference to the track object for global/frenet conversion services
 
   protected:
 
-    Pose propagatePoseInertial(const Pose& p_init, float t);
-    Pose propagatePoseFrenet(const Pose& p_init, float t);
+    Pose propagatePoseInertial(const Pose& p_in, float t);
+    Pose propagatePoseFrenet(const Pose& p_in, float t);
 
     Pose m_pose;
-
-    int m_lane; // starting with far left lane = 0
-    int lanes_available = 3;
-
-    double m_yaw_ds; // frenet track angle, [rad] (+)???
-    double m_a;     // acceleration
 
   private:
 

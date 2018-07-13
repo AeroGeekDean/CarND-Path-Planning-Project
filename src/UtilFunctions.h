@@ -16,6 +16,8 @@ using std::min;
 const double mph2ms = 0.45;
 const double ms2mph = 1/mph2ms;
 
+const double max_s = 6945.554; // [m], length of track in Frenet coord
+
 // For converting back and forth between radian and degrees.
 inline constexpr double pi() { return M_PI; }
 inline double deg2rad(double x) { return x * pi() / 180; }
@@ -26,7 +28,7 @@ inline double distance(double x1, double y1, double x2, double y2) { return magn
 
 /***********************
  * global2local()
-************************/
+ ***********************/
 inline vector<double> global2local(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
 {
  vector<double> out;
@@ -39,7 +41,7 @@ inline vector<double> global2local(double x_in, double y_in, double x_ref, doubl
 
 /***********************
  * local2global()
-************************/
+ ***********************/
 inline vector<double> local2global(double x_in, double y_in, double x_ref, double y_ref, double del_theta)
 {
   vector<double> out;
@@ -49,5 +51,29 @@ inline vector<double> local2global(double x_in, double y_in, double x_ref, doubl
 }
 
 /***********************
-************************/
+ * s_wrap() Wraps S to range [0, max_s]
+ ***********************/
+inline double s_wrap(const double& s_in)
+{
+  double s_out = s_in;
+  while (s_out > max_s) s_out -= max_s;
+  while (s_out <=  0.0) s_out += max_s;
+  return s_out;
+}
+
+
+/***********************
+ * s_wrap2() Wraps S to range [-max_s/2, max_s/2]
+ ***********************/
+inline double s_wrap2(const double& s_in)
+{
+  double s_out = s_in;
+  while (s_out >   max_s/2) s_out -= max_s;
+  while (s_out <= -max_s/2) s_out += max_s;
+  return s_out;
+}
+
+
+/***********************
+ ***********************/
 #endif /* UTILFUNCTIONS_H_ */

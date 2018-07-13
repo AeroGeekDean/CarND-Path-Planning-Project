@@ -8,15 +8,17 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+
 #include "UtilFunctions.h" // <--- moved many global helper functions here
 #include "spline.h"
 #include "Track.h"
 #include "TrafficManager.h"
 #include "EgoVehicle.h"
-#include "Pose.h"
 
 using namespace std;
 using namespace std::chrono;
+
+using std::min;
 
 // for convenience
 using json = nlohmann::json;
@@ -44,12 +46,16 @@ string hasData(string s) {
 int main() {
   uWS::Hub h;
 
+  cout << std::fixed << std::setprecision(3);
+
   int lane = 1;
   float ref_vel    = 49.0*mph2ms; // [mph]
 
   float dt_ref     = 0.02; // [sec], or 50Hz. frame rate used by simulator
   float time_traj  = 1.0;  // [sec] look ahead time used to build vehicle trajectory for vehicle control
   float time_probe = 3.0;  // [sec] Look-ahead time used for traffic prediction & ego planning
+
+  float buffer_dist = 10.0; // [m] distance to keep back from car ahead
 
   float accel_lim  = 5.0; // [m/s^2], rubic limit = 10.0
   float jerk_lim   = 5.0; // [m/s^3], rubic limit = 10.0
@@ -67,13 +73,13 @@ int main() {
   string map_file_ = "../data/highway_map.csv";
   ifstream in_map_(map_file_.c_str(), ifstream::in);
   string line;
+  double x;
+  double y;
+  float  s;
+  float  d_x;
+  float  d_y;
   while (getline(in_map_, line)) {
   	istringstream iss(line);
-  	double x;
-  	double y;
-  	float s;
-  	float d_x;
-  	float d_y;
   	iss >> x;
   	iss >> y;
   	iss >> s;
@@ -97,7 +103,8 @@ int main() {
   ego.m_PathPlanner.m_time_probe = time_probe;
   ego.m_PathPlanner.m_target_lane = lane;
   ego.m_PathPlanner.m_ref_vel = ref_vel;
-  ego.m_PathPlanner.accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
+  ego.m_PathPlanner.m_buffer_distance = buffer_dist;
+  ego.m_PathPlanner.m_dv_accel_lim = accel_lim*dt_ref; // set accel limit, as max delta-v per time step
   ego.m_PathPlanner.jerk_lim = jerk_lim*dt_ref;  // set jerk limit, as max delta-a per time step
 
   // 181 WPTs...
@@ -177,7 +184,7 @@ int main() {
             p.s = car_s;
             p.d = car_d;
             p.yaw = deg2rad(car_yaw);
-            p.spd = mph2ms*car_speed;
+            p.spd = min((mph2ms*car_speed), (double)ref_vel); // cleaning up feedback spd noise...
           ego.updatePose(p);
           ego.m_PathPlanner.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
 

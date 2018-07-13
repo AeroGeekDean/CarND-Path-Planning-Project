@@ -6,10 +6,10 @@
  */
 
 #include "TrafficManager.h"
+#include "UtilFunctions.h"
 #include <iostream>
 #include <vector>
 #include <math.h>
-#include "UtilFunctions.h"
 
 using std::vector;
 using std::cout;
@@ -18,12 +18,10 @@ using std::endl;
 TrafficManager::TrafficManager(Track& trk)
 :m_rTrack(trk)
 {
-
 }
 
 TrafficManager::~TrafficManager()
 {
-
 }
 
 void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
@@ -42,7 +40,7 @@ void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
       double vy = data[4];
       p.s =       data[5];
       p.d =       data[6];
-      p.lane = (int)(p.d/4); // each lane is 4m wide
+      p.lane =    (int)(p.d/4.0); // each lane is 4m wide
       p.yaw =     atan2(vy, vx);
       p.spd =     magnitude(vx, vy);
 
@@ -51,7 +49,6 @@ void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
 
     m_vehicles.insert( {id, vehicle} );
   }
-
 }
 
 void TrafficManager::predict()
@@ -63,7 +60,6 @@ void TrafficManager::predict()
   {
     int id = itr->first;
     vector<Pose> trajectory = itr->second.trajectoryPrediction(m_time_probe);
-
     m_predictions.insert( {id, trajectory} );
   }
 }

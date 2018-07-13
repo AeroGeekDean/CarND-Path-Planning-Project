@@ -8,8 +8,8 @@
 #ifndef EGOVEHICLE_H_
 #define EGOVEHICLE_H_
 
-#include "PathPlanner.h"
 #include "Vehicle.h"
+#include "PathPlanner.h"
 
 class EgoVehicle : public Vehicle {
  public:

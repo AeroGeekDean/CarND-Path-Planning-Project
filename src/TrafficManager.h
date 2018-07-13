@@ -8,10 +8,10 @@
 #ifndef TRAFFICMANAGER_H_
 #define TRAFFICMANAGER_H_
 
+#include "Vehicle.h"
+#include "Track.h"
 #include <map>
 #include <vector>
-#include "Track.h"
-#include "Vehicle.h"
 
 using std::map;
 using std::vector;
