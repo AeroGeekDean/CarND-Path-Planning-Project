@@ -1,6 +1,10 @@
 /*
  * Vehicle.h
  *
+ *  The Vehicle class is meant to represent a vehicle that is on the road. It holds
+ *  the pose of itself via a Pose data structure, and it knows how to propagate that
+ *  pose into the future.
+ *
  *  Created on: Jun 22, 2018
  *      Author: deanliu
  */

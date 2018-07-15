@@ -1,6 +1,9 @@
 /*
  * TrafficManager.cpp
  *
+ *  The TrafficManager class holds knowledge about all the known (sensed) traffic
+ *  vehicles on the track, as well as predictions of each vehicle's future pose.
+ *
  *  Created on: Jun 26, 2018
  *      Author: deanliu
  */
@@ -28,10 +31,8 @@ void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
 {
   m_vehicles.clear(); // clear out past data
 
-  for (auto itr=traffic_in.begin(); itr!=traffic_in.end(); itr++)
+  for (const auto& data : traffic_in)
   {
-    vector<double> data = *itr;
-
     int id = (int)data[0];
     Pose p;
       p.x =       data[1];
@@ -43,10 +44,8 @@ void TrafficManager::updateTraffic(const vector<vector<double>>& traffic_in)
       p.lane =    (int)(p.d/4.0); // each lane is 4m wide
       p.yaw =     atan2(vy, vx);
       p.spd =     magnitude(vx, vy);
-
     Vehicle vehicle(m_rTrack);
     vehicle.updatePose(p);
-
     m_vehicles.insert( {id, vehicle} );
   }
 }
@@ -56,10 +55,9 @@ void TrafficManager::predict()
   m_predictions.clear();
 
   // get all traffic vehicles to create prediction of itself into the future
-  for (auto itr=m_vehicles.begin(); itr!=m_vehicles.end(); itr++ )
+  for (auto& kv : m_vehicles)
   {
-    int id = itr->first;
-    vector<Pose> trajectory = itr->second.trajectoryPrediction(m_time_probe);
-    m_predictions.insert( {id, trajectory} );
+    int id = kv.first;
+    m_predictions.insert( {id, kv.second.trajectoryPrediction(m_time_probe)});
   }
 }

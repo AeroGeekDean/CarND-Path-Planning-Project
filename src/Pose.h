@@ -1,3 +1,18 @@
+/*
+ * Pose.h
+ *
+ *  This include file contains a Pose struct which holds all the state data of a
+ *  vehicle in an instance in time (ie: pose). It also contains a FSM_state enum
+ *  that defines the Finite State Machine (FSM) states of the vehicle's path planner.
+ *
+ *  This file is meant to be included by any classes that will handle data pertaining
+ *  to a vehicle's pose or FSM states so that they have the definition of these complex
+ *  data types. Thus this file acts as part of the interface (API).
+ *
+ *  Created on: Jun 26, 2018
+ *      Author: deanliu
+ */
+
 #ifndef POSE_H_
 #define POSE_H_
 

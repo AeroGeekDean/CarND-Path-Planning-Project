@@ -15,10 +15,12 @@
 #include "TrafficManager.h"
 #include "EgoVehicle.h"
 
-using namespace std;
 using namespace std::chrono;
 
 using std::min;
+using std::cout;
+using std::endl;
+using std::string;
 
 // for convenience
 using json = nlohmann::json;
@@ -55,7 +57,8 @@ int main() {
   float time_traj  = 1.0;  // [sec] look ahead time used to build vehicle trajectory for vehicle control
   float time_probe = 3.0;  // [sec] Look-ahead time used for traffic prediction & ego planning
 
-  float buffer_dist = 10.0; // [m] distance to keep back from car ahead
+  float buffer_dist = 10.0; // [m] distance to keep back from car ahead.
+                            // Assume 1 car length = 5m, thus 10m gives us 1 car spacing from bumper-to-bumper
 
   float accel_lim  = 5.0; // [m/s^2], rubic limit = 10.0
   float jerk_lim   = 5.0; // [m/s^3], rubic limit = 10.0
@@ -64,14 +67,15 @@ int main() {
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
-  // create major components
+  // --- create major components ---
 
-  Track track;
+  Track track; // <--- The track class holds knowledge about the track,
+              //        including waypoint map and Frenet<>XY conversions
   track.m_num_lanes_available = 3;
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
-  ifstream in_map_(map_file_.c_str(), ifstream::in);
+  std::ifstream in_map_(map_file_.c_str(), std::ifstream::in);
   string line;
   double x;
   double y;
@@ -79,7 +83,7 @@ int main() {
   float  d_x;
   float  d_y;
   while (getline(in_map_, line)) {
-  	istringstream iss(line);
+  	std::istringstream iss(line);
   	iss >> x;
   	iss >> y;
   	iss >> s;
@@ -94,10 +98,18 @@ int main() {
   track.processWpts();
   track.m_max_s = max_s;
 
-  TrafficManager traffic_mgr(track);
+  TrafficManager traffic_mgr(track);  // <--- The TrafficManager class holds knowledge of the traffic vehicles,
+                                      //      and their predictions. Each traffic vehicle is an instance of the
+                                      //      Vehicle class. The Vehicle class holds the pose of the vehicle,
+                                      //      and knows how to propagate that pose forward in time.
   traffic_mgr.m_time_probe = time_probe;
 
-  EgoVehicle ego(track);
+  EgoVehicle ego(track); // <--- The EgoVehicle class derives from the Vehicle class, and contains a PathPlanner.
+                         //      The PathPlanner class is the bulk of the "brain" for this project. The planner's
+                         //      algorithm strategy is based on the Behavior planning pseudocode from the class room
+                         //      Long url link below.
+//      https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/27800789-bc8e-4adc-afe0-ec781e82ceae/lessons/56274ea4-277d-4d1e-bd95-ce5afbad64fd/concepts/e9f08f5f-0b8f-488d-8940-45bc474b4913
+
   ego.m_PathPlanner.m_dt_ref = dt_ref;
   ego.m_PathPlanner.m_time_traj = time_traj;
   ego.m_PathPlanner.m_time_probe = time_probe;
@@ -110,7 +122,7 @@ int main() {
   // 181 WPTs...
   cout << "Loaded file: '" << map_file_ << "' with " << track.m_num_wpts << " WPTs." << endl;
 
-  h.onMessage([&track, &traffic_mgr, &ego, &ref_vel, &lane, &max_s]
+  h.onMessage([&track, &traffic_mgr, &ego, &ref_vel]
                (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                 uWS::OpCode opCode)
   {
@@ -148,8 +160,6 @@ int main() {
           // data format: for each car [id, x, y, vx, vy, s, d]
           auto sensor_fusion = j[1]["sensor_fusion"]; // vector<vector<double>>
 
-          int prev_size = previous_path_x.size();
-
           // --- Time ---
           if (!sim_initialized) {
             time_past = steady_clock::now();
@@ -161,13 +171,11 @@ int main() {
           delta_t = duration_cast<duration<double>>( time_now - time_past ); // dt in [sec]
           double dt_actual = delta_t.count();
           time_past = time_now; // update past value
-
-//          cout << endl;
 //          cout << "dt_actual " << dt_actual << ", Hz " << 1/dt_actual << endl;
 
        // ---- Above are INPUTS ----
 
-          // ======== main algorithm goes here ==========
+          // ======== main (per frame) algorithm goes here ==========
 
           /*---------------------
            * Traffic Predictions
@@ -184,25 +192,23 @@ int main() {
             p.s = car_s;
             p.d = car_d;
             p.yaw = deg2rad(car_yaw);
-            p.spd = min((mph2ms*car_speed), (double)ref_vel); // cleaning up feedback spd noise...
+            p.spd = min((mph2ms*car_speed), (double)ref_vel); // feedback speed contains noise. setting upper limit
           ego.updatePose(p);
-          ego.m_PathPlanner.updatePrevPath(previous_path_x, previous_path_y, end_path_s, end_path_d);
+
+          ego.m_PathPlanner.updatePrevPath( previous_path_x, previous_path_y, end_path_s, end_path_d );
+
+          /*------------------
+           * Run Path Planner
+            -----------------*/
+          vector<Pose> trajectory_output = ego.m_PathPlanner.chooseNextState( traffic_mgr.m_predictions );
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          vector<Pose> output = ego.m_PathPlanner.chooseNextState( traffic_mgr.m_predictions );
-
-//          vector<Pose> output = ego.m_PathPlanner.getTrajectoryOutput(lane,
-//                                                                      ref_vel,
-//                                                                      ego.m_PathPlanner.m_dt_ref,
-//                                                                      ego.m_PathPlanner.m_time_traj, // trajectory look ahead time
-//                                                                      10); // # of prev path pts to re-use
-
-          for (int i=0; i<output.size(); i++)
+          for (const Pose& pose : trajectory_output)
           {
-            next_x_vals.push_back(output.at(i).x);
-            next_y_vals.push_back(output.at(i).y);
+            next_x_vals.push_back(pose.x);
+            next_y_vals.push_back(pose.y);
           }
 
        // ---- Below are OUTPUTS ----
@@ -219,16 +225,11 @@ int main() {
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
 
         } // if (event == "telemetry")
-        else
-          cout << event << endl;
-
       } // if (s != "")...
       else
       {
         // Manual driving
         std::string msg = "42[\"manual\",{}]";
-        cout << "manual: " << endl;
-//        cout << "manual: " << j[1] << endl;
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
     } // if "42" at start of socket data...

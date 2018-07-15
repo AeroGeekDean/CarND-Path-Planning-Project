@@ -1,6 +1,10 @@
 /*
  * UtilFunctions.h
  *
+ *  This include file contains many useful inlined helper functions. Many of these
+ *  used to be in main.cpp starter code originally, and were moved here for clarity
+ *  and organization.
+ *
  *  Created on: Nov 1, 2017
  *      Author: deanliu
  */
@@ -19,7 +23,7 @@ const double ms2mph = 1/mph2ms;
 const double max_s = 6945.554; // [m], length of track in Frenet coord
 
 // For converting back and forth between radian and degrees.
-inline constexpr double pi() { return M_PI; }
+inline constexpr double pi()    { return M_PI; }
 inline double deg2rad(double x) { return x * pi() / 180; }
 inline double rad2deg(double x) { return x * 180 / pi(); }
 
@@ -51,7 +55,7 @@ inline vector<double> local2global(double x_in, double y_in, double x_ref, doubl
 }
 
 /***********************
- * s_wrap() Wraps S to range [0, max_s]
+ * s_wrap() Wraps S to range [0, max_s)
  ***********************/
 inline double s_wrap(const double& s_in)
 {
@@ -63,7 +67,7 @@ inline double s_wrap(const double& s_in)
 
 
 /***********************
- * s_wrap2() Wraps S to range [-max_s/2, max_s/2]
+ * s_wrap2() Wraps S to range [-max_s/2, max_s/2)
  ***********************/
 inline double s_wrap2(const double& s_in)
 {

@@ -1,6 +1,9 @@
 /*
  * TrafficManager.h
  *
+ *  The TrafficManager class holds knowledge about all the known (sensed) traffic
+ *  vehicles on the track, as well as predictions of each vehicle's future pose.
+ *
  *  Created on: Jun 26, 2018
  *      Author: deanliu
  */

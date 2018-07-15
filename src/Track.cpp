@@ -1,6 +1,17 @@
 /*
  * Track.cpp
  *
+ *  The track class holds knowledge about the closed-circuit track that the car
+ *  will be driven on. It contains waypoints (wpts) that define the centerline
+ *  of the track, with 3 lanes on each sides of the centerline. The wapoints data
+ *  contains (x, y) global coordinates for each waypoint, as well as the Frenet-S
+ *  distance for each waypoints. Additionally, a (dx, dy) unit vector in global
+ *  coordinate is also provided to define the direction of the Frenet-D.
+ *
+ *  Methods to convert between global (x,y) and Frenet (s, d) are provided, as
+ *  well as methods to find both the closest waypoint and next waypoint (based
+ *  on orientation).
+ *
  *  Created on: Jun 28, 2018
  *      Author: deanliu
  */
@@ -77,14 +88,14 @@ int Track::NextWaypoint(double x, double y, double theta)
 
 /***********************
  * getFrenet()
- * Transform from map x,y coordinates to Frenet s,d coordinates
+ * Transform from map (x,y,theta) coordinates to Frenet (s,d) coordinates
 ************************/
 vector<double> Track::getFrenet(double x, double y, double theta)
 {
   int next_wp = NextWaypoint(x,y, theta);
   int prev_wp = next_wp-1;
 
-  // detect for wrapping around the WPTS (since it's a loop)
+  // detect for wrapping around the WPTS (since the track is a loop)
   if(next_wp == 0)  {
     prev_wp = m_num_wpts-1;
   }
@@ -96,34 +107,28 @@ vector<double> Track::getFrenet(double x, double y, double theta)
   double x_y = y - map_waypoints_y[prev_wp];
 
   /* Use vector cross-product to calc frenet_d value (Sarrus's Rule)
-     Ref: https://en.wikipedia.org/wiki/Cross_product#Matrix_notation
-     The along-leg-path vector needs to be an unit-vector (length=1) for this to work
-  */
+   * Ref: https://en.wikipedia.org/wiki/Cross_product#Matrix_notation
+   * The along-leg-path vector needs to be an unit-vector (length=1) for this to work
+   */
   double leg_length = distance(map_waypoints_x[next_wp], map_waypoints_y[next_wp],
                                map_waypoints_x[prev_wp], map_waypoints_y[prev_wp]);
 
   n_x = n_x / leg_length; // make it an unit-vector...
   n_y = n_y / leg_length;
 
-  // Sarrus's Rule for the k-axis (vector 'n' cross-product vector 'X')
+  // Sarrus's Rule for the k-axis (vector 'n' cross-product with vector 'X')
   double frenet_d = x_x*n_y - x_y*n_x;  // positive (+) to RIGHT of centerline path
 
-  // calculate S value as that of prev_wp + S along this leg length
+  // calculate S value as that of (S@prev_wp) + (S along this leg length)
   double frenet_s = map_waypoints_s[prev_wp]
                   + (x_x*n_x + x_y*n_y); // 'X' dot-product with unit-vector 'n'
 
-//  for(int i=0; i<prev_wp; i++)  {
-//    // now add all prior leg lengths
-//    frenet_s += distance(map_waypoints_x[i], map_waypoints_y[i],
-//                         map_waypoints_x[i+1], map_waypoints_y[i+1]);
-//  }
-
-  return {frenet_s,frenet_d};
+  return {frenet_s, frenet_d};
 }
 
 /***********************
  * getXY()
- * Transform from Frenet s,d coordinates to map x,y
+ * Transform from Frenet (s,d) coordinates to map (x,y,heading)
 ************************/
 vector<double> Track::getXY(double s, double d)
 {
@@ -152,5 +157,5 @@ vector<double> Track::getXY(double s, double d)
   double x = seg_x + d*cos(perp_heading);
   double y = seg_y + d*sin(perp_heading);
 
-  return {x,y,heading};
+  return {x, y, heading};
 }
