@@ -102,12 +102,53 @@ The 'control trajectory' generation will ensure smooth vehicle transition of the
 
 ##### Lateral Path Control
 
+
 ##### Speed Control
 
+>I tried to implement a 2nd-order lag filter, like in the block diagram below. And choosing the gains (`gain_a`, `gain_j`) judicially using engineering judgment.
+>
+>[replace below ASCII diagram with a nice block diagram?]
+>```
+/*
+ *          V_err         A_cmd   A_err          Jerk      Accel       Vel
+ * Vin --->o----->[gain_a]----->o------>[gain_j]---->[1/S]--+--->[1/S]--+--> Vout
+ *     (+) ^                (+) ^                           |           |
+ *         |(-)                 |(-)   Accel_feedback       |           |
+ *         |                    +---------------------------+           |
+ *         |                                                            |
+ *         |    Velocity_feedback                                       |
+ *         +------------------------------------------------------------+
+ */
+```
+>
+>With the associated 2nd order (Laplace transform) transfer function as:
+>
+><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" title="\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}+G_{j}S+G_{a}G_{j}}"/></a>
+>
+>where:
+>
+>* Natural frequency (Omega_n)   = `sqrt( gain_a * gain_j )`
+>* Damping ratio (zeta)          = `0.5 * gain_j / Omega_n`
+>
+>Thus with:
+>
+>* `gain_a` = 0.403 [1/sec]
+>* `gain_j` = 0.9 [1/sec]
+>
+>The filter dynamics are:
+>* Omega_n = 0.602 [rad/sec]
+>* Zeta    = 0.747 [Non-Dimensional] <----**under-damped, oscillatory!!!**
 
+However, I was having trouble debugging out the long-period speed oscillation and ending up spending too much time on controller design, instead of project path planning design.
+
+Thus I **abandoned this approach**, for now. And instead implemented a much simpler **"limited acceleration speed controller"**.
+
+>[Insert a block diagram here]
+
+By limiting the max acceleration to 5.0 [m/s^2], and implementing it as a 'max-speed-change-per-frame' limit (`m_dv_accel_lim`) of 0.1 [m/s] (= 5.0*0.02). **This limits how much the speed could change per frame.** This yields a max jerk of only 2.5 [m/s^3] for a large amplitude step speed input. ONLY when a large step speed input is immediately followed by a large step in the opposite direction, does the max jerk reach 10.0 [m/s^3].
 
 ---
-## Below are instructions provided for the students
+## Below are instructions provided by Udacity
 
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab v1.2](https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
