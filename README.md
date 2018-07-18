@@ -1,14 +1,122 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
-   
+
+---
+## My Results
+
+### Video
+Here's a video of my results for this project.
+
+Click image below for the YouTube video.
+
+[![1 lap without incidents](https://i9.ytimg.com/vi/87kG1EezW1M/mq1.jpg?sqp=CPSLsdoF&rs=AOn4CLDJMV-Asj4GGBtfklTqRYkCylKGgQ)](https://youtu.be/87kG1EezW1M)
+
+The video consists of autonomous driving of 1+ lap around the test track, with the following highlight points:
+- [0:20](https://www.youtube.com/watch?v=87kG1EezW1M&t=20s) - encounters 1st set of traffic
+- [1:20](https://www.youtube.com/watch?v=87kG1EezW1M&t=80s) - encounters 2nd set of traffic _(formation road block)_
+- [2:10](https://www.youtube.com/watch?v=87kG1EezW1M&t=130s) - [2:50](https://www.youtube.com/watch?v=87kG1EezW1M&t=170s) - encounters several single vehicle traffic
+- [4:00](https://www.youtube.com/watch?v=87kG1EezW1M&t=240s) - encounters 3rd set of traffic _(formation road block)_
+- [5:00](https://www.youtube.com/watch?v=87kG1EezW1M&t=300s) - encounters 4th set of traffic _(Traffic changed lane to block, after ego vehicle has already maneuvered. This forced ego vehicle to make corrective maneuver.)_
+- [5:30](https://www.youtube.com/watch?v=87kG1EezW1M&t=330s) - encounters last set of densely packed traffic _(formation road block with dynamic traffic speed changes, forcing ego vehicle to constantly re-evaluate the optimal path and make corrective maneuvers.)_
+
+Note that:
+- The green line is the commanded trajectory, extending 1 second ahead.
+- The path planner is predicting and evaluating 3 seconds ahead in the future (beyond the green dots of the commanded trajectory).
+- Given the option, the path planner has a preference to pass on the left instead of right.
+- The path planner currently only scans 1 lane on either sides of the current lane. Thus if there's a better path 2 lanes away, it will not find it until the vehicle has moved to a lane next to such path.
+
+The background soundtrack is from the arcade game of my childhood, [Spy Hunter](https://en.wikipedia.org/wiki/Spy_Hunter)!
+
+### General Approach
+
+I started the project by following the [Udacity project walkthrough and Q&A video](https://www.youtube.com/watch?v=7sI3VHFPP0w), which provided a good starting point with a 'working' trajectory generator that follows a chosen lane on the highway but without much traffic path planning capability.
+
+I then:
+* organized code base to make things more objected oriented,
+* cleaned up some algorithms that were kind of messy/fragile/kludgy
+* started adding & trying out new ideas, features and capabilities
+
+All the while testing continuously to make sure existing functionalities are retained and not affected, and verified new added capabilities performed as intended.
+
+I also intend on re-using this project code base on other future vehicle autonomy project ideas, thus designed it with that purpose in mind... (instead of 'moving fast' just to pass this course).
+
+### Software Class Layout
+It was noticed the `main.cpp` starter code contains numerous global functions. This is not an ideal layout for a extensive project like this, thus they were re-organized into `UitlFunctions.h` and `Track` class. Efforts were also taken to verify proper working of these functions from the starter code. That effort was not wasted...
+
+#### 1. UtilFunctions.h
+This include file contains many useful inlined global helper functions and constants. Many of these used to originally be in main.cpp starter code, and were moved here for clarity and organization.
+
+#### 2. Track class
+The `track` class holds knowledge about the closed-circuit track that the car will be driving on. It contains waypoints (WPTs) that define the centerline of the track, with 3 lanes on each sides of the centerline.
+
+The WPTs data contains (x, y) global coordinates for each WPT, as well as their Frenet-S distance. Additionally, a (dx, dy) unit vector in global coordinate is also provided to define the direction of the Frenet-D at each WPT.
+
+Methods to convert between global (x,y) and Frenet (s,d) are provided, as well as methods to find both the closest WPT and next WPT (based on orientation). These used to reside in `main.cpp` as global functions and are now class methods with direct access to the class WPT data, thus reducing the need to pass-in the WPT data as function parameters.
+
+##### Cleaned up vector math
+The original provided `getFrent()` function was cleaned up using vector geometry math. Vector cross-product was used to directly calculate both the magnitude and sign (+ or -) of the Frenet-d value, and vector dot-product was used for Frenet-s value. Further more, excessive for-looping was removed for computational efficiency.
+
+#### 3. TrafficManager class
+The `TrafficManager` class holds knowledge about all the known (sensed) traffic vehicles on the track, as well as predictions of each vehicle's future pose.
+
+For each frame, `'sensor_fusion'` data from the simulator is passed to the `TrafficManager` class, where an instance of `Vehicle` class (described below) is created to represent each traffic vehicle's current pose (using `Pose.h`), and then each `Vehicle` instance is asked to create a prediction of its future pose. The `TrafficManager` then holds onto all these predictions.
+
+#### 4. Pose.h
+This include file contains a `Pose` struct which holds all the state data of a vehicle an an instance in time (ie: pose). It also contains a `FSM_state` enum that defines the Finite State Machine (FSM) states of the vehicle's path planner.
+
+*The Behavior Planning classroom lesson code (which is the starting point of my project algorithm) used a `string` datatype to represent the vehicle's FSM `state`. My design changed the datatype from `string` to `enum` to help with clarity. But more importantly, it allows typo errors to be caught at compile-time, and it avoided the use of '[magic numbers](https://en.wikipedia.org/wiki/Magic_number_(programming)' to signify the FSM state.*
+
+This file is meant to be included by any classes that will handle data pertaining to a vehicle's pose or FSM states so that they have the definition of these complex data types. Thus this file sort of acts as part of the interface (API).
+
+#### 5. Vehicle class
+The `Vehicle` class represents a vehicle that is on the road. It holds the pose of itself via a `Pose` data structure, and it knows how to propagate that pose into the future.
+
+#### 6. EgoVehicle class
+The `EgoVehicle` class derives from the `Vehicle` base class, thus contains all the base class capabilities. The `EgoVehicle` additionally contains a `PathPlanner` object.
+
+#### 7. PathPlanner class
+The `PathPlanner` class implements the core functionality of this project. It is associated with an `EgoVehicle` instance to get its `pose` data. It contains the Finite State Machine (FSM) where each state represents a different vehicle behavior. It generates **'predictive trajectory'** for each of these behavior states. These *'predictive trajectory'* contains only 2 `poses`: 1 present & 1 future. From each of these *'predictive trajectories'*, a **cost** is assigned based on their progress on the overall mission. The behavior with the lowest cost is then chosen as the next FSM state.
+
+Finally, a **'control trajectory'** that defines the vehicle's future path is then generated, to be send to the simulator to control the ego vehicle's motion. This *'control trajectory'* must be smooth enough to avoid excessive acceleration and jerk.
+
+The **'look ahead time'** for the *'predictive trajectory'* and the *'control trajectory'* could be different, and are different. For prediction, it looks 3.0 [sec] into the future; while for control, a trajectory 1.0 [sec] into the future is created.
+
+**Note** that everything within behavior planning of *'predictive trajectories'* are calculated in Frenet (s,d) coordinates. While *'control trajectory'* generates output in global (x,y) coordinates.
+
+Since the overall mission of the project is to navigate forward through traffic as fast as possible, while staying under the 50 [mph] speed limit; and each *'predictive trajectory'* are already formulated to not violate constrains (such as avoiding collision, staying with the 3 permissible lanes, adhering to acceleration and jerk limits, etc)... The **cost function** is then simply based on the forward progress only. The behavior having the lowest cost (ie: making the most forward progress) is chosen, and a 'control trajectory' is then finally build with specifications for that behavior.
+
+The 'control trajectory' specifications are simply:
+- new commanded speed,
+- new commanded lane, and
+- \# of previous frame path points to re-use, *set to 10pts (@50Hz interval) for this project*
+
+The 'control trajectory' generation will ensure smooth vehicle transition of these commands.
+
+### Algorithm Functional Allocations
+
+#### Traffic Predictions
+
+#### Behavior Planning
+
+#### Trajectory Generation
+
+##### Lateral Path Control
+
+##### Speed Control
+
+
+
+---
+## Below are instructions provided for the students
+
 ### Simulator.
-You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
+You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab v1.2](https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
 
 ### Goals
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
 
 #### The map of the highway is in data/highway_map.txt
-Each waypoint in the list contains  [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
+Each waypoint in the list contains  [x, y, s, dx, dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
 
 The highway's waypoints loop around so the frenet s value, distance along the road, goes from 0 to 6945.554.
 
@@ -23,40 +131,40 @@ Here is the data provided from the Simulator to the C++ Program
 
 #### Main car's localization Data (No Noise)
 
-["x"] The car's x position in map coordinates
-
-["y"] The car's y position in map coordinates
-
-["s"] The car's s position in frenet coordinates
-
-["d"] The car's d position in frenet coordinates
-
-["yaw"] The car's yaw angle in the map
-
-["speed"] The car's speed in MPH
+* ["x"] The car's x position in map coordinates, [m]
+* ["y"] The car's y position in map coordinates, [m]
+* ["s"] The car's s position in frenet coordinates, [m]
+* ["d"] The car's d position in frenet coordinates, [m]
+* ["yaw"] The car's yaw angle in the map, [deg], (+)=yaw left from X to Y axis
+* ["speed"] The car's speed in [MPH]
 
 #### Previous path data given to the Planner
 
 //Note: Return the previous list but with processed points removed, can be a nice tool to show how far along
-the path has processed since last time. 
+the path has processed since last time.
 
-["previous_path_x"] The previous list of x points previously given to the simulator
+* ["previous_path_x"] The previous list of x points previously given to the simulator, [m]
+* ["previous_path_y"] The previous list of y points previously given to the simulator, [m]
 
-["previous_path_y"] The previous list of y points previously given to the simulator
+#### Previous path's end s and d values
 
-#### Previous path's end s and d values 
-
-["end_path_s"] The previous list's last point's frenet s value
-
-["end_path_d"] The previous list's last point's frenet d value
+* ["end_path_s"] The previous list's last point's frenet s value, [m]
+* ["end_path_d"] The previous list's last point's frenet d value, [m]
 
 #### Sensor Fusion Data, a list of all other car's attributes on the same side of the road. (No Noise)
 
-["sensor_fusion"] A 2d vector of cars and then that car's [car's unique ID, car's x position in map coordinates, car's y position in map coordinates, car's x velocity in m/s, car's y velocity in m/s, car's s position in frenet coordinates, car's d position in frenet coordinates. 
+["sensor_fusion"] A 2d vector of cars and then that car's:
+* car's unique ID
+* car's x position in map coordinates, [m]
+* car's y position in map coordinates, [m]
+* car's x velocity in [m/s]
+* car's y velocity in [m/s]
+* car's s position in frenet coordinates, [m]
+* car's d position in frenet coordinates, [m]
 
 ## Details
 
-1. The car uses a perfect controller and will visit every (x,y) point it recieves in the list every .02 seconds. The units for the (x,y) points are in meters and the spacing of the points determines the speed of the car. The vector going from a point to the next point in the list dictates the angle of the car. Acceleration both in the tangential and normal directions is measured along with the jerk, the rate of change of total Acceleration. The (x,y) point paths that the planner recieves should not have a total acceleration that goes over 10 m/s^2, also the jerk should not go over 50 m/s^3. (NOTE: As this is BETA, these requirements might change. Also currently jerk is over a .02 second interval, it would probably be better to average total acceleration over 1 second and measure jerk from that.
+1. The car uses a perfect controller and will visit every (x,y) point it recieves in the list every .02 seconds. The units for the (x,y) points are in meters and the spacing of the points determines the speed of the car. The vector going from a point to the next point in the list dictates the angle of the car. Acceleration both in the tangential and normal directions is measured along with the jerk, the rate of change of total Acceleration. The (x,y) point paths that the planner recieves should not have a total acceleration that goes over 10 m/s^2, also the jerk should not go over 10 m/s^3. (NOTE: As this is BETA, these requirements might change. Also currently jerk is over a .02 second interval, it would probably be better to average total acceleration over 1 second and measure jerk from that.
 
 2. There will be some latency between the simulator running and the path planner returning a path, with optimized code usually its not very long maybe just 1-3 time steps. During this delay the simulator will continue using points that it was last given, because of this its a good idea to store the last points you have used so you can have a smooth transition. previous_path_x, and previous_path_y can be helpful for this transition since they show the last points given to the simulator controller with the processed points already removed. You would either return a path that extends this previous path or make sure to create a new path that has a smooth transition with this last path.
 
@@ -82,7 +190,7 @@ A really helpful resource for doing this project and creating smooth trajectorie
   * Run either `install-mac.sh` or `install-ubuntu.sh`.
   * If you install from source, checkout to commit `e94b6e1`, i.e.
     ```
-    git clone https://github.com/uWebSockets/uWebSockets 
+    git clone https://github.com/uWebSockets/uWebSockets
     cd uWebSockets
     git checkout e94b6e1
     ```
@@ -137,4 +245,3 @@ still be compilable with cmake and make./
 
 ## How to write a README
 A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-

@@ -88,9 +88,10 @@ class PathPlanner {
                        const map<int,vector<Pose>>& predictions,
                        const vector<Pose>& trajectory);
 
-  vector<Pose> generate_trajectory(int lane,          // ending lane for trajectory
-                                   float v_in,        // speed for trajectory
-                                   int num_pp_pts=-1); // -1 = use all previous path points, otherwise specify
+  vector<Pose> generate_control_trajectory(int lane,          // ending lane for trajectory
+                                           float v_in,        // speed for trajectory
+                                           int num_pp_pts=-1); // -1 = use all previous path points,
+                                                               // otherwise specify
 
   FSM_state m_state = kFSM_Start;
 

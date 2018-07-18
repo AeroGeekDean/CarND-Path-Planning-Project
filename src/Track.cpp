@@ -96,11 +96,12 @@ vector<double> Track::getFrenet(double x, double y, double theta)
   int prev_wp = next_wp-1;
 
   // detect for wrapping around the WPTS (since the track is a loop)
-  if(next_wp == 0)  {
+  if (next_wp == 0) {
     prev_wp = m_num_wpts-1;
   }
 
-  double n_x = map_waypoints_x[next_wp] - map_waypoints_x[prev_wp]; // vector 'n' from prev_wp to next_wp
+  // vector 'n' from prev_wp to next_wp
+  double n_x = map_waypoints_x[next_wp] - map_waypoints_x[prev_wp];
   double n_y = map_waypoints_y[next_wp] - map_waypoints_y[prev_wp];
 
   double x_x = x - map_waypoints_x[prev_wp];  // vector 'X' from prev_wp to vehicle location
