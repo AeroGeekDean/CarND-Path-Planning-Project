@@ -9,7 +9,7 @@ Here's a video of my results for this project.
 
 Click image below for the YouTube video.
 
-[![1 lap without incidents](https://img.youtube.com/vi/87kG1EezW1M/maxresdefault.jpg)](https://youtu.be/87kG1EezW1M)
+[![1 lap without incidents](https://img.youtube.com/vi/87kG1EezW1M/hqdefault.jpg)](https://youtu.be/87kG1EezW1M)
 
 The video consists of autonomous driving of 1+ lap around the test track, with the following highlight points:
 - [0:20](https://www.youtube.com/watch?v=87kG1EezW1M&t=20s) - encounters 1st set of traffic
