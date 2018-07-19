@@ -152,7 +152,7 @@ For each frame, `'sensor_fusion'` data from the simulator is passed to the `Traf
 #### 4. Pose.h
 This include file contains a `Pose` struct which holds all the state data of a vehicle an an instance in time (ie: pose). It also contains a `FSM_state` enum that defines the Finite State Machine (FSM) states of the vehicle's path planner.
 
-*The Behavior Planning classroom lesson code (which is the starting point of my project algorithm) used a `string` datatype to represent the vehicle's FSM `state`. My design changed the datatype from `string` to `enum` to help with clarity. But more importantly, it allows typo errors to be caught at compile-time, and it avoided the use of '[magic numbers](https://en.wikipedia.org/wiki/Magic_number_(programming)' to signify the FSM state.*
+*The Behavior Planning classroom lesson code (which is the starting point of my project algorithm) used a `string` datatype to represent the vehicle's FSM `state`. My design changed the datatype from `string` to `enum` to help with clarity. But more importantly, it allows typo errors to be caught at compile-time, and it avoided the use of '[magic numbers](https://en.wikipedia.org/wiki/Magic_number_(programming))' to signify the FSM state.*
 
 This file is meant to be included by any classes that will handle data pertaining to a vehicle's pose or FSM states so that they have the definition of these complex data types. Thus this file sort of acts as part of the interface (API).
 
