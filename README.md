@@ -107,29 +107,11 @@ The 'control trajectory' generation will ensure smooth vehicle transition of the
 
 I tried to implement a 2nd-order lag filter, like in the block diagram below. And choosing the gains (`gain_a`, `gain_j`) judicially using engineering judgment.
 
-
-<kbd><img src="./pics/Speed_Controller_BLock_Diagram.jpg"></kbd>
-
-<kbd>![Speed Controller Block Diagram](./pics/Speed_Controller_BLock_Diagram.jpg)</kbd>
-
-```
-/*
- *          V_err         A_cmd   A_err          Jerk      Accel       Vel
- * Vin --->o----->[gain_a]----->o------>[gain_j]---->[1/S]--+--->[1/S]--+--> Vout
- *     (+) ^                (+) ^                           |           |
- *         |(-)                 |(-)   Accel_feedback       |           |
- *         |                    +---------------------------+           |
- *         |                                                            |
- *         |    Velocity_feedback                                       |
- *         +------------------------------------------------------------+
- */
-```
+<p align="center"><img src="./pics/Speed_Controller_Block_Diagram.jpg"></p>
 
 With the associated 2nd order (Laplace transform) transfer function as:
 
-<p align="center"><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}"/></a></p>
-
-<p align="center">[![transfer function equation](./pics/transfer_function.gif)](https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}})</p>
+<p align="center"><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}"><img src="./pics/transfer_function.gif"/></a></p>
 
 where:
 
