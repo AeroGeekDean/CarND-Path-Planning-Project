@@ -107,7 +107,11 @@ The 'control trajectory' generation will ensure smooth vehicle transition of the
 
 I tried to implement a 2nd-order lag filter, like in the block diagram below. And choosing the gains (`gain_a`, `gain_j`) judicially using engineering judgment.
 
->[replace below ASCII diagram with a nice block diagram?]
+
+<kbd><img src="./pics/Speed_Controller_BLock_Diagram.jpg"></kbd>
+
+<kbd>![Speed Controller Block Diagram](./pics/Speed_Controller_BLock_Diagram.jpg)</kbd>
+
 ```
 /*
  *          V_err         A_cmd   A_err          Jerk      Accel       Vel
@@ -123,7 +127,9 @@ I tried to implement a 2nd-order lag filter, like in the block diagram below. An
 
 With the associated 2nd order (Laplace transform) transfer function as:
 
-<a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" title="\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}+G_{j}S+G_{a}G_{j}}"/></a>
+<p align="center"><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}"/></a></p>
+
+<p align="center">[![transfer function equation](./pics/transfer_function.gif)](https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}})</p>
 
 where:
 
@@ -135,11 +141,11 @@ Thus with:
 * `gain_a` = 0.403 [1/sec]
 * `gain_j` = 0.9 [1/sec]
 
-The filter dynamics are:
+The resulting 2nd-order system dynamics are:
 * Omega_n = 0.602 [rad/sec]
 * Zeta    = 0.747 [Non-Dimensional] <----**under-damped, oscillatory!!!**
 
-However, I was having trouble debugging out the long-period speed oscillation and ending up spending too much time on controller design, instead of project path planning design.
+However, I was having trouble debugging out the long-period speed oscillation and ending up spending too much time on controller design, instead of project path planning design...
 
 Thus I **abandoned this approach**, for now. And instead implemented a much simpler **"limited acceleration speed controller"**.
 
