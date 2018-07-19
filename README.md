@@ -63,11 +63,11 @@ Then use something like a simple Naive Bayesian Classifier to predict if a traff
 #### 2. Behavior Planning
 The algorithm used the [Behavior Planning classroom pseudocode](https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/27800789-bc8e-4adc-afe0-ec781e82ceae/lessons/56274ea4-277d-4d1e-bd95-ce5afbad64fd/concepts/e9f08f5f-0b8f-488d-8940-45bc474b4913) as guideline for a starting point. For this project, they are slightly modified as:
 1. Based on the current state, ask the Finite State Machine (FSM) for a list of **viable next states**. A list of ALL the possible states are:
-  - **K**eep**L**ane = _stay in current lane, but keep distance from any vehicle ahead_
-  - **P**repare**L**ane**C**hange-**L**eft = _stay in current lane, but probe progress if changed lane left_
-  - **P**repare**L**ane**C**hange-**R**ight = _stay in current lane, but probe progress if changed lane right_
-  - **L**ane**C**hange-**L**eft = _if no traffic, change to left lane_
-  - **L**ane**C**hange-**R**ight = _if no traffic, change to right lane_
+   - **K**eep**L**ane = _stay in current lane, but keep distance from any vehicle ahead_
+   - **P**repare**L**ane**C**hange-**L**eft = _stay in current lane, but probe progress if changed lane left_
+   - **P**repare**L**ane**C**hange-**R**ight = _stay in current lane, but probe progress if changed lane right_
+   - **L**ane**C**hange-**L**eft = _if no traffic, change to left lane_
+   - **L**ane**C**hange-**R**ight = _if no traffic, change to right lane_
 2. For each of the possible next states, create a **predictive trajectory** that estimates the ego vehicle's viable **future pose** (at a pre-determined **look-ahead time**) based on the behavior of that state, while taking into consideration the surrounding **traffic vehicles** (and their predicted future movement).
 3. Assign a **cost** to each of these **predictive trajectories**, based on the objective of the mission. For this project, the **objective** is to make as much forward progress as possible while staying under the speed limit.
 4. The state with the **lowest cost** predictive trajectory becomes the next state. _(Note that the state could remain the same from frame-to-frame.)_
@@ -81,8 +81,8 @@ Note however, because of the asynchronous nature between the simulator and this 
 Thus the overall strategy of the trajectory generator is as follow:
 
 1. Create a set of five (5) widely spaced (x,y) temporary waypoints. The first two (2) points are used to define the starting reference location and orientation. The reference is either:
-  - the ego vehicle's current state, or
-  - previous control trajectory segment's end point
+   - the ego vehicle's current state, or
+   - previous control trajectory segment's end point
 
   Then three (3) more evenly-spaced waypoints far ahead of the vehicle, that are on the desired path, are added.
 
