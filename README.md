@@ -183,17 +183,17 @@ The 'control trajectory' generation will ensure smooth vehicle transition of the
 ### My Concluding Remarks
 This has very much been a fun project!!!
 
-I feel there are so many places that I could really "geek it out", but unfortunately I have to finish it up and move on... for now.
+I feel there are so many places that I could really "geek it out", but unfortunately had to wrap it up and move on... for now.
 
 Some of the ideas that I had:
 1. Implement an path planner that **focus only on the given 3 lanes**, instead of the generalized algorithm that I started with.
-  - The Achilles heel of my project algorithm is that it ONLY searches for paths that are 1 adjacent lane away from the current path. Thus if a more optimal path is 2 lanes away, it will not find it until it has moved to an adjacent lane. Thus my algorithm could very easily be trapped by 2 traffic vehicles traveling slowly in an echelon formation.
+   - The Achilles heel of my project algorithm is that it ONLY searches for paths that are 1 adjacent lane away from the current path. Thus if a more optimal path is 2 lanes away, it will not find it until it has moved to an adjacent lane. Thus my algorithm could very easily be trapped by 2 traffic vehicles traveling slowly in an echelon formation.
 
 2. **Locally save the previous frame control trajectory** so as able to have success with my speed controller that is a 2nd-order lag filter
-    - Since the simulator only provides the (x,y) positions of the previous frame trajectory, the 2nd-order filter's initial velocity and acceleration have to be estimated using numerical differentiation method, which creates artificial noise and might have affected the filter dynamics. By saving the trajectory data locally, the velocity & acceleration could be accessed directly.
+   - Since the simulator only provides the (x,y) positions of the previous frame trajectory, the 2nd-order filter's initial velocity and acceleration have to be estimated using numerical differentiation method, which creates artificial noise and might have affected the filter dynamics. By saving the trajectory data locally, the velocity & acceleration could be accessed directly.
 
 3. Try to re-cast the problem so a **search algorithm (such as A\* or modified-A\*)** could be used.
-  - Despite many in Udacity's SDC program said that search algorithm is better suited for parking lot or local/city driving, and not well suited for highway driving... I feel for the mission of *"finding the best weave-able path through a maze of highway traffic obstacles"*, might be a good candidate for search. The relative positions of the traffic (with respect to ego vehicle) could be considered a dynamic maze. The challenge would be the handling of the time-varying dynamics of that maze obstacle, which are based on traffics of varying speeds plus the uncertainty of their movement predictions. The search algorithm will have to be modified to handle this... Sounds like a fun challenge! :)
+   - Despite many in Udacity's SDC program said that search algorithm is better suited for parking lot or local/city driving, and not well suited for highway driving... I feel for the mission of *"finding the best weave-able path through a maze of highway traffic obstacles"*, might be a good candidate for search. The relative positions of the traffic (with respect to ego vehicle) could be considered a dynamic maze. The challenge would be the handling of the time-varying dynamics of that maze obstacle, which are based on traffics of varying speeds plus the uncertainty of their movement predictions. The search algorithm will have to be modified to handle this... Sounds like a fun challenge! :)
 
 
 ---
