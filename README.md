@@ -36,11 +36,99 @@ I then:
 * cleaned up some algorithms that were kind of messy/fragile/kludgy
 * started adding & trying out new ideas, features and capabilities
 
-All the while testing continuously to make sure existing functionalities are retained and not affected, and verified new added capabilities performed as intended.
+All the while testing continuously to make sure existing functionalities are retained and not affected, and verified new added capabilities have performed as intended.
 
-I also intend on re-using this project code base on other future vehicle autonomy project ideas, thus designed it with that purpose in mind... (instead of 'moving fast' just to pass this course).
+I also intend on re-using this project code base on other future vehicle autonomy project ideas, thus designed it with that goal in mind... (instead of 'moving fast' just to pass this course).
 
-### Software Class Layout
+I'll now describe the project from a **planning and control algorithm** perspective first, **software implementation** description will then follow afterwards.
+
+---
+### Planning and Control
+
+#### Algorithm Functional Allocations
+The functions required for this highway driving project are broken up as:
+- **Traffic** vehicle motion **prediction**
+- Ego vehicle **behavior planning**
+- Ego vehicle **trajectory generation**
+
+#### 1. Traffic Predictions
+The observed traffic vehicles are **assumed** to continue on their current speed and lane. Thus their positions are predicted in the Frenet coordinate system as constant speed motion.
+
+There is a placeholder stub for a more elaborate prediction module as a **future enhancement**, where perhaps we could predict the lane-wise behavior of traffic vehicles based on:
+- lateral position (Frenet-D) within the lane
+- their velocity vector orientation relative to the Frenet-S lane direction
+
+Then use something like a simple Naive Bayesian Classifier to predict if a traffic vehicle will be changing lanes.
+
+#### 2. Behavior Planning
+The algorithm used the [Behavior Planning classroom pseudocode](https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/27800789-bc8e-4adc-afe0-ec781e82ceae/lessons/56274ea4-277d-4d1e-bd95-ce5afbad64fd/concepts/e9f08f5f-0b8f-488d-8940-45bc474b4913) as guideline for a starting point. For this project, they are slightly modified as:
+1. Based on the current state, ask the Finite State Machine (FSM) for a list of **viable next states**. A list of ALL the possible states are:
+  - **K**eep**L**ane = _stay in current lane, but keep distance from any vehicle ahead_
+  - **P**repare**L**ane**C**hange-**L**eft = _stay in current lane, but probe progress if changed lane left_
+  - **P**repare**L**ane**C**hange-**R**ight = _stay in current lane, but probe progress if changed lane right_
+  - **L**ane**C**hange-**L**eft = _if no traffic, change to left lane_
+  - **L**ane**C**hange-**R**ight = _if no traffic, change to right lane_
+2. For each of the possible next states, create a **predictive trajectory** that estimates the ego vehicle's viable **future pose** (at a pre-determined **look-ahead time**) based on the behavior of that state, while taking into consideration the surrounding **traffic vehicles** (and their predicted future movement).
+3. Assign a **cost** to each of these **predictive trajectories**, based on the objective of the mission. For this project, the **objective** is to make as much forward progress as possible while staying under the speed limit.
+4. The state with the **lowest cost** predictive trajectory becomes the next state. _(Note that the state could remain the same from frame-to-frame.)_
+5. The **Trajectory Generation** part of the code then creates a **control trajectory** to control the ego vehicle's motion. This is described in the next section.
+
+#### 3. Trajectory Generation
+A control trajectory is created on every frame, that consists of a series of (x,y) positions that will become the ego vehicle's future positions.
+
+Note however, because of the asynchronous nature between the simulator and this path planner process, we do not know, a priori, the actual process frame time and i/o delays. Thus in order to keep continuity with previous frames, the simulator provides back the REMAINING trajectory points from the previous frame that the vehicle has not yet traversed to. We'll re-use a segment of the previous trajectory in the construction of new trajectory for the current frame. The number of points making up the re-used segment of the previous trajectory, is selectable.
+
+Thus the overall strategy of the trajectory generator is as follow:
+
+1. Create a set of five (5) widely spaced (x,y) temporary waypoints. The first two (2) points are used to define the starting reference location and orientation. The reference is either:
+  - the ego vehicle's current state, or
+  - previous control trajectory segment's end point
+
+  Then three (3) more evenly-spaced waypoints far ahead of the vehicle, that are on the desired path, are added.
+
+2. A spline is then fitted to these five (5) points, and finer spaced points are interpolated for a smooth vehicle trajectory. The spacing of these trajectory points will define the vehicle's speed (also longitudinal acceleration & jerk), while the fine-grain lateral control of the ego vehicle motion is provided by the smooth curve fitting of the spine.
+
+##### Speed Control
+
+I tried to implement a 2nd-order lag filter, like in the block diagram below.
+
+<p align="center"><img src="./pics/Speed_Controller_Block_Diagram.jpg"></p>
+
+With the associated 2nd order (Laplace transform) transfer function as:
+
+<p align="center"><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}"><img src="./pics/transfer_function.gif"/></a></p>
+
+where:
+
+* Natural frequency (Omega_n)   = `sqrt( gain_a * gain_j )`
+* Damping ratio (zeta)          = `0.5 * gain_j / Omega_n`
+
+The gains (`gain_a`, `gain_j`) are chosen judicially as:
+* `'gain_a'` = 0.403 [1/sec]
+  - max expected V_err of 50 [mph], or 22.35 [m/s], with max allowable acceleration of 9.0 [m/s^2]
+  - yields 0.403 = 9/22.35
+* `'gain_j'` = 0.9 [1/sec]
+  - max expected A_err of 10.0 [m/s^2], with max allowable jerk of 9.0 [m/s^3]
+  - yields 0.9 = 9.0/10.0
+
+The resulting 2nd-order system dynamics are:
+* Natural frequency `'Omega_n'` = 0.602 [rad/sec]
+* Damping ratio `'Zeta'` = 0.747 <----**under-damped, potentially oscillatory!**
+
+**However**, I was having trouble debugging out some long-period speed oscillation and ending up spending too much time on controller design, instead of the path planning design that is the goal of this project. Thus I **abandoned this approach**, for now.
+
+Instead, I implemented a much simpler **"limited acceleration speed controller"** , diagramed below.
+
+<p align="center"><img src="./pics/Lim_Accel_Spd_Controller.jpg"></p>
+
+By limiting the max acceleration to 5.0 [m/s^2], below the requirement threshold of 10.0 [m/s^2], ensures the acceleration requirement will be met.
+
+Furthermore, by implementing the acceleration limit as a 'max-speed-change-per-frame' limit (`m_dv_accel_lim`) of 0.1 [m/s] (at 50Hz frame rate), yields a max jerk of only 2.5 [m/s^3] for a large amplitude step speed input. ONLY when a large step speed input is immediately followed by a large step in the opposite direction, does the max jerk reach 10.0 [m/s^3]. This thus satisfied the jerk requirement for the project.
+
+---
+### Software Implementation
+
+#### Class Layout
 It was noticed the `main.cpp` starter code contains numerous global functions. This is not an ideal layout for a extensive project like this, thus they were re-organized into `UitlFunctions.h` and `Track` class. Efforts were also taken to verify proper working of these functions from the starter code. That effort was not wasted...
 
 #### 1. UtilFunctions.h
@@ -92,51 +180,24 @@ The 'control trajectory' specifications are simply:
 
 The 'control trajectory' generation will ensure smooth vehicle transition of these commands.
 
-### Algorithm Functional Allocations
+### My Concluding Remarks
+This has very much been a fun project!!!
 
-#### Traffic Predictions
+I feel there are so many places that I could really "geek it out", but unfortunately I have to finish it up and move on... for now.
 
-#### Behavior Planning
+Some of the ideas that I had:
+1. Implement an path planner that **focus only on the given 3 lanes**, instead of the generalized algorithm that I started with.
+  - The Achilles heel of my project algorithm is that it ONLY searches for paths that are 1 adjacent lane away from the current path. Thus if a more optimal path is 2 lanes away, it will not find it until it has moved to an adjacent lane. Thus my algorithm could very easily be trapped by 2 traffic vehicles traveling slowly in an echelon formation.
 
-#### Trajectory Generation
+2. **Locally save the previous frame control trajectory** so as able to have success with my speed controller that is a 2nd-order lag filter
+    - Since the simulator only provides the (x,y) positions of the previous frame trajectory, the 2nd-order filter's initial velocity and acceleration have to be estimated using numerical differentiation method, which creates artificial noise and might have affected the filter dynamics. By saving the trajectory data locally, the velocity & acceleration could be accessed directly.
 
-##### Lateral Path Control
+3. Try to re-cast the problem so a **search algorithm (such as A\* or modified-A\*)** could be used.
+  - Despite many in Udacity's SDC program said that search algorithm is better suited for parking lot or local/city driving, and not well suited for highway driving... I feel for the mission of *"finding the best weave-able path through a maze of highway traffic obstacles"*, might be a good candidate for search. The relative positions of the traffic (with respect to ego vehicle) could be considered a dynamic maze. The challenge would be the handling of the time-varying dynamics of that maze obstacle, which are based on traffics of varying speeds plus the uncertainty of their movement predictions. The search algorithm will have to be modified to handle this... Sounds like a fun challenge! :)
 
-
-##### Speed Control
-
-I tried to implement a 2nd-order lag filter, like in the block diagram below. And choosing the gains (`gain_a`, `gain_j`) judicially using engineering judgment.
-
-<p align="center"><img src="./pics/Speed_Controller_Block_Diagram.jpg"></p>
-
-With the associated 2nd order (Laplace transform) transfer function as:
-
-<p align="center"><a href="https://www.codecogs.com/eqnedit.php?latex=\frac{V_{out}}{V_{in}}=\frac{G_{a}G_{j}}{S^{2}&plus;G_{j}S&plus;G_{a}G_{j}}"><img src="./pics/transfer_function.gif"/></a></p>
-
-where:
-
-* Natural frequency (Omega_n)   = `sqrt( gain_a * gain_j )`
-* Damping ratio (zeta)          = `0.5 * gain_j / Omega_n`
-
-Thus with:
-
-* `gain_a` = 0.403 [1/sec]
-* `gain_j` = 0.9 [1/sec]
-
-The resulting 2nd-order system dynamics are:
-* Omega_n = 0.602 [rad/sec]
-* Zeta    = 0.747 [Non-Dimensional] <----**under-damped, oscillatory!!!**
-
-However, I was having trouble debugging out the long-period speed oscillation and ending up spending too much time on controller design, instead of project path planning design...
-
-Thus I **abandoned this approach**, for now. And instead implemented a much simpler **"limited acceleration speed controller"**.
-
->[Insert a block diagram here]
-
-By limiting the max acceleration to 5.0 [m/s^2], and implementing it as a 'max-speed-change-per-frame' limit (`m_dv_accel_lim`) of 0.1 [m/s] (= 5.0*0.02). **This limits how much the speed could change per frame.** This yields a max jerk of only 2.5 [m/s^3] for a large amplitude step speed input. ONLY when a large step speed input is immediately followed by a large step in the opposite direction, does the max jerk reach 10.0 [m/s^3].
 
 ---
-## Below are instructions provided by Udacity
+## Below are Udacity instructions
 
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab v1.2](https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
